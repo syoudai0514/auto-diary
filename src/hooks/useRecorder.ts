@@ -25,7 +25,7 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
-/** 拡張子を mime から推定（OpenAI へ渡すファイル名用）。 */
+/** 拡張子を mime から推定（サーバーへ渡すファイル名用）。 */
 export function extForMime(mime: string | undefined): string {
   if (!mime) return 'webm';
   if (mime.includes('mp4')) return 'm4a';

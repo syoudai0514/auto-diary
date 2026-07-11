@@ -10,11 +10,12 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-const createTranscription = vi.fn();
-vi.mock('@/lib/openai', () => ({
-  getOpenAI: () => ({ audio: { transcriptions: { create: createTranscription } } }),
-  transcribeModel: () => 'gpt-4o-mini-transcribe',
+const generateContent = vi.fn();
+vi.mock('@/lib/gemini', () => ({
+  getGemini: () => ({ models: { generateContent } }),
+  transcribeModel: () => 'gemini-2.0-flash',
   maxAudioBytes: () => 1024, // テスト用に小さく（1KB）
+  extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
 }));
 
 import { POST } from './route';
@@ -31,8 +32,8 @@ function formReq(file: File | null, ip = `9.9.9.${Math.floor(Math.random() * 250
 
 beforeEach(async () => {
   _resetRateLimits();
-  createTranscription.mockReset();
-  createTranscription.mockResolvedValue({ text: '文字起こし結果です' });
+  generateContent.mockReset();
+  generateContent.mockResolvedValue({ text: '文字起こし結果です' });
   cookieToken = (await createSessionToken()).token;
 });
 
@@ -64,8 +65,20 @@ describe('POST /api/transcribe', () => {
     expect((await res.json()).text).toBe('文字起こし結果です');
   });
 
-  it('OpenAI 失敗時はエラーを返す（本文は含めない）', async () => {
-    createTranscription.mockRejectedValue(Object.assign(new Error('bad'), { status: 500 }));
+  it('Gemini がインラインデータとして音声を受け取る', async () => {
+    const file = new File([new Uint8Array(10)], 'a.webm', { type: 'audio/webm' });
+    await POST(formReq(file));
+    expect(generateContent).toHaveBeenCalledTimes(1);
+    const call = generateContent.mock.calls[0][0];
+    expect(call.model).toBe('gemini-2.0-flash');
+    const parts = call.contents[0].parts;
+    const inlinePart = parts.find((p: any) => p.inlineData);
+    expect(inlinePart.inlineData.mimeType).toBe('audio/webm');
+    expect(typeof inlinePart.inlineData.data).toBe('string');
+  });
+
+  it('Gemini 失敗時はエラーを返す（本文は含めない）', async () => {
+    generateContent.mockRejectedValue(Object.assign(new Error('bad'), { status: 500 }));
     const file = new File([new Uint8Array(10)], 'a.webm', { type: 'audio/webm' });
     const res = await POST(formReq(file));
     expect(res.status).toBe(500);

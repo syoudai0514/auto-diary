@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * AI が生成する構造化日記データのスキーマ。
- * OpenAI の structured output(json_schema) とクライアント側バリデーションの両方で使う。
+ * Gemini の structured output(responseSchema) とクライアント側バリデーションの両方で使う。
  */
 export const DiarySchema = z.object({
   title: z.string(),
@@ -33,59 +33,6 @@ export const DEFAULT_STYLE: DiaryStyleId = 'natural';
 export function isDiaryStyleId(v: unknown): v is DiaryStyleId {
   return typeof v === 'string' && DIARY_STYLES.some((s) => s.id === v);
 }
-
-/**
- * OpenAI Chat Completions の response_format(json_schema) に渡す JSON Schema。
- * strict モードのため全プロパティを required + additionalProperties:false にする。
- */
-export const DIARY_JSON_SCHEMA = {
-  name: 'diary',
-  strict: true,
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      title: { type: 'string', description: '日記のタイトル（15文字程度まで）' },
-      body: { type: 'string', description: '自然な日記本文。読みやすい段落に分ける' },
-      facts: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '実際に起きた出来事（事実のみ）',
-      },
-      feelings: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '本人が感じたこと（感情）',
-      },
-      interpretations: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '本人の解釈・考え',
-      },
-      nextActions: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '今後試したいこと',
-      },
-      tags: {
-        type: 'array',
-        items: { type: 'string' },
-        description: '内容を表すタグ（例: 家族, 仕事）',
-      },
-      rawTranscript: { type: 'string', description: '元の文字起こしをそのまま格納' },
-    },
-    required: [
-      'title',
-      'body',
-      'facts',
-      'feelings',
-      'interpretations',
-      'nextActions',
-      'tags',
-      'rawTranscript',
-    ],
-  },
-} as const;
 
 /**
  * モデル出力の文字列から JSON を頑健に抽出してパースする。

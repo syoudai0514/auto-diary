@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { clientKey, rateLimit } from '@/lib/rateLimit';
-import { chatModel, getOpenAI } from '@/lib/openai';
+import { chatModel, getGemini } from '@/lib/gemini';
 import { DEFAULT_STYLE, isDiaryStyleId } from '@/lib/diary';
 import { DiaryGenerationError, generateDiary } from '@/lib/generateDiary';
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   const styleId = isDiaryStyleId(style) ? style : DEFAULT_STYLE;
 
   try {
-    const diary = await generateDiary(getOpenAI(), {
+    const diary = await generateDiary(getGemini(), {
       transcript,
       style: styleId,
       model: chatModel(),

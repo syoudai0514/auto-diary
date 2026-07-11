@@ -10,11 +10,12 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-// --- モック: OpenAI ---
-const createChat = vi.fn();
-vi.mock('@/lib/openai', () => ({
-  getOpenAI: () => ({ chat: { completions: { create: createChat } } }),
-  chatModel: () => 'gpt-4o-mini',
+// --- モック: Gemini ---
+const generateContent = vi.fn();
+vi.mock('@/lib/gemini', () => ({
+  getGemini: () => ({ models: { generateContent } }),
+  chatModel: () => 'gemini-2.0-flash',
+  extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
 }));
 
 import { POST } from './route';
@@ -40,8 +41,8 @@ function req(body: unknown, ip = `1.2.3.${Math.floor(Math.random() * 250)}`): Re
 
 beforeEach(async () => {
   _resetRateLimits();
-  createChat.mockReset();
-  createChat.mockResolvedValue({ choices: [{ message: { content: validDiaryJson } }] });
+  generateContent.mockReset();
+  generateContent.mockResolvedValue({ text: validDiaryJson });
   cookieToken = (await createSessionToken()).token;
 });
 
@@ -81,7 +82,7 @@ describe('POST /api/generate', () => {
   });
 
   it('生成が JSON にならない場合は 502', async () => {
-    createChat.mockResolvedValue({ choices: [{ message: { content: '壊れた出力' } }] });
+    generateContent.mockResolvedValue({ text: '壊れた出力' });
     const res = await POST(req({ transcript: '歩いた', style: 'natural' }));
     expect(res.status).toBe(502);
   });

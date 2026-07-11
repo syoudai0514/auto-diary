@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeParseDiary, isDiaryStyleId, DIARY_JSON_SCHEMA } from './diary';
+import { safeParseDiary, isDiaryStyleId } from './diary';
 
 const valid = {
   title: 'テスト',
@@ -52,17 +52,11 @@ describe('safeParseDiary（JSONパース）', () => {
   });
 });
 
-describe('スタイル判定とスキーマ定義', () => {
+describe('スタイル判定', () => {
   it('isDiaryStyleId', () => {
     expect(isDiaryStyleId('natural')).toBe(true);
     expect(isDiaryStyleId('emotion')).toBe(true);
     expect(isDiaryStyleId('unknown')).toBe(false);
     expect(isDiaryStyleId(123)).toBe(false);
-  });
-
-  it('JSON Schema は strict で全プロパティ required', () => {
-    expect(DIARY_JSON_SCHEMA.strict).toBe(true);
-    expect(DIARY_JSON_SCHEMA.schema.required).toContain('title');
-    expect(DIARY_JSON_SCHEMA.schema.additionalProperties).toBe(false);
   });
 });

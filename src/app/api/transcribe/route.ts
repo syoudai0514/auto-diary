@@ -1,15 +1,27 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { clientKey, rateLimit } from '@/lib/rateLimit';
-import { getOpenAI, maxAudioBytes, transcribeModel } from '@/lib/openai';
+import { extractText, getGemini, maxAudioBytes, transcribeModel } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 // 文字起こしは時間がかかるため上限を引き上げる
 export const maxDuration = 60;
 
 /**
- * 音声(multipart/form-data の "file")を受け取り、OpenAI の文字起こしモデルで
- * 日本語テキストへ変換して返す。音声はサーバー/Vercel 上に永続保存しない。
+ * 一字一句を正確に書き起こすための指示。
+ * 要約・言い換え・脚色をさせず、聞こえたままをテキスト化させる。
+ */
+const TRANSCRIBE_PROMPT = [
+  '添付された音声を、日本語として一字一句正確に文字起こししてください。',
+  '要約したり、言い換えたり、内容を追加・省略したりしないでください。',
+  '聞き取れない部分があっても、推測で補わないでください。',
+  '文字起こしされたテキストのみを出力し、説明や前置きは付けないでください。',
+  '音声に発話が含まれない場合は、何も出力しないでください。',
+].join('\n');
+
+/**
+ * 音声(multipart/form-data の "file")を受け取り、Gemini にインラインデータとして渡し、
+ * 日本語の文字起こしテキストを得て返す。音声はサーバー/Vercel 上に永続保存しない。
  * 音声データ・本文はログに一切出力しない。
  */
 export async function POST(req: Request) {
@@ -53,14 +65,25 @@ export async function POST(req: Request) {
   }
 
   try {
-    const openai = getOpenAI();
-    const result = await openai.audio.transcriptions.create({
-      file,
+    const arrayBuffer = await file.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const mimeType = file.type || 'audio/webm';
+
+    const ai = getGemini();
+    const response = await ai.models.generateContent({
       model: transcribeModel(),
-      language: 'ja',
-      // 一部モデルは response_format 未対応のため指定しない（デフォルトのtext/jsonで受ける）
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: TRANSCRIBE_PROMPT }, { inlineData: { mimeType, data: base64 } }],
+        },
+      ],
+      config: {
+        temperature: 0,
+      },
     });
-    const text = (result as { text?: string }).text ?? '';
+
+    const text = extractText(response).trim();
     return NextResponse.json({ text });
   } catch (err: unknown) {
     // 本文・音声は出さず、種類だけを記録する
