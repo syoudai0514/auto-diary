@@ -574,7 +574,10 @@ export default function AppPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="audio/*"
+        // iOS は audio/* だけだと、拡張子はあってもMIME情報を持たないファイル
+        // （Files間の書き出し・Shortcuts経由の保存など）をグレーアウトして選択不可にすることがあるため、
+        // 主要な音声拡張子を明示して合わせて許可する（実際の中身チェックはサーバー側で行う）。
+        accept="audio/*,.m4a,.mp3,.wav,.aac,.caf,.aiff,.aif,.amr,.flac,.ogg,.opus,.wma,.mp4,.mov"
         multiple
         className="hidden"
         onChange={onFilesChosen}

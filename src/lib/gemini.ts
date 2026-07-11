@@ -34,3 +34,38 @@ export function maxAudioBytes(): number {
 export function extractText(response: { text?: string }): string {
   return typeof response.text === 'string' ? response.text : '';
 }
+
+/** 拡張子 → MIME タイプ。ブラウザが型を報告できない音声ファイル向けのフォールバック用。 */
+const EXT_MIME_MAP: Record<string, string> = {
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  mov: 'audio/mp4',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  aac: 'audio/aac',
+  caf: 'audio/x-caf',
+  aiff: 'audio/aiff',
+  aif: 'audio/aiff',
+  amr: 'audio/amr',
+  flac: 'audio/flac',
+  ogg: 'audio/ogg',
+  opus: 'audio/opus',
+  wma: 'audio/x-ms-wma',
+  webm: 'audio/webm',
+};
+
+/** ブラウザが返す type が空・汎用的すぎるとみなすか。 */
+function isGenericMimeType(type: string | undefined): boolean {
+  return !type || type === 'application/octet-stream' || type === 'application/x-empty';
+}
+
+/**
+ * 音声ファイルの MIME タイプを推定する。
+ * iOS の「ファイル」アプリ経由（Shortcuts書き出し等）で選ばれたファイルは
+ * ブラウザ側で正しい type を持たないことがあるため、拡張子からも補完する。
+ */
+export function guessAudioMimeType(filename: string, declaredType: string | undefined): string {
+  if (!isGenericMimeType(declaredType)) return declaredType as string;
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  return EXT_MIME_MAP[ext] ?? 'audio/webm';
+}

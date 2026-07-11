@@ -11,12 +11,16 @@ vi.mock('next/headers', () => ({
 }));
 
 const generateContent = vi.fn();
-vi.mock('@/lib/gemini', () => ({
-  getGemini: () => ({ models: { generateContent } }),
-  transcribeModel: () => 'gemini-2.0-flash',
-  maxAudioBytes: () => 1024, // テスト用に小さく（1KB）
-  extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
-}));
+vi.mock('@/lib/gemini', async (importOriginal) => {
+  // guessAudioMimeType / extractText は実装をそのまま使い、修正の効果を実テストで検証する
+  const actual = await importOriginal<typeof import('@/lib/gemini')>();
+  return {
+    ...actual,
+    getGemini: () => ({ models: { generateContent } }),
+    transcribeModel: () => 'gemini-2.0-flash',
+    maxAudioBytes: () => 1024, // テスト用に小さく（1KB）
+  };
+});
 
 import { POST } from './route';
 
@@ -75,6 +79,15 @@ describe('POST /api/transcribe', () => {
     const inlinePart = parts.find((p: any) => p.inlineData);
     expect(inlinePart.inlineData.mimeType).toBe('audio/webm');
     expect(typeof inlinePart.inlineData.data).toBe('string');
+  });
+
+  it('type情報を持たない .m4a ファイルでも拡張子から audio/mp4 と推定する（iOSファイルアプリ対策）', async () => {
+    // iOSの「ファイル」アプリ経由（Shortcuts書き出し等）では file.type が空文字になることがある
+    const file = new File([new Uint8Array(10)], '2026-07-11_15-51_家庭記録.m4a', { type: '' });
+    await POST(formReq(file));
+    const call = generateContent.mock.calls[0][0];
+    const inlinePart = call.contents[0].parts.find((p: any) => p.inlineData);
+    expect(inlinePart.inlineData.mimeType).toBe('audio/mp4');
   });
 
   it('Gemini 失敗時はエラーを返す（本文は含めない）', async () => {

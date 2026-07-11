@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { clientKey, rateLimit } from '@/lib/rateLimit';
-import { extractText, getGemini, maxAudioBytes, transcribeModel } from '@/lib/gemini';
+import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
 // 文字起こしは時間がかかるため上限を引き上げる
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString('base64');
-    const mimeType = file.type || 'audio/webm';
+    const mimeType = guessAudioMimeType(file.name, file.type);
 
     const ai = getGemini();
     const response = await ai.models.generateContent({
