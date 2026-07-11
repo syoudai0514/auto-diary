@@ -1,0 +1,99 @@
+'use client';
+
+import type { Diary, DiaryStyleId } from './diary';
+
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.name = 'ApiError';
+  }
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  let code = 'error';
+  let message = '通信に失敗しました。';
+  try {
+    const data = await res.json();
+    code = data?.error ?? code;
+    if (data?.message) message = data.message;
+  } catch {
+    /* ignore */
+  }
+  return new ApiError(res.status, code, message);
+}
+
+/** タイムアウト付き fetch。 */
+async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+export async function login(password: string): Promise<void> {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw await parseError(res);
+}
+
+export async function logout(): Promise<void> {
+  await fetch('/api/logout', { method: 'POST' });
+}
+
+export async function transcribeAudio(
+  blob: Blob,
+  filename: string,
+  timeoutMs = 90000,
+): Promise<string> {
+  const form = new FormData();
+  form.append('file', blob, filename);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: form }, timeoutMs);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(408, 'timeout', '文字起こしがタイムアウトしました。');
+    }
+    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
+  }
+  if (!res.ok) throw await parseError(res);
+  const data = await res.json();
+  return data.text ?? '';
+}
+
+export async function generateDiaryApi(
+  transcript: string,
+  style: DiaryStyleId,
+  timeoutMs = 60000,
+): Promise<Diary> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      '/api/generate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript, style }),
+      },
+      timeoutMs,
+    );
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(408, 'timeout', '日記の生成がタイムアウトしました。');
+    }
+    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
+  }
+  if (!res.ok) throw await parseError(res);
+  const data = await res.json();
+  return data.diary as Diary;
+}

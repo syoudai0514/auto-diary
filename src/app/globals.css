@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   デザイントークン「ウォーム・ペーパー」
+   ライト/ダークを単純反転ではなく、同一色相で明度反転して定義する。
+   ========================================================================= */
+:root {
+  --c-bg: #f7f3ec;
+  --c-surface: #f0e4cc;
+  --c-text: #2b2622;
+  --c-text-secondary: rgba(43, 38, 34, 0.62);
+  --c-text-tertiary: rgba(43, 38, 34, 0.42);
+  --c-border: rgba(43, 38, 34, 0.12);
+  --c-accent: #c1652e;
+  --c-accent-on: #fbf3e9;
+  --c-recording: #d6432e;
+  --c-error: #d6432e;
+  --c-error-soft: rgba(214, 67, 46, 0.12);
+  --c-warning: #8a5a22;
+  --c-warning-soft: #f0e4cc;
+  --c-success: #4c7a52;
+  color-scheme: light;
+}
+
+/* システム設定がダークのとき（手動テーマが無ければ）ダークを適用 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-bg: #211d19;
+    --c-surface: #2b241e;
+    --c-text: #f3ece0;
+    --c-text-secondary: rgba(243, 236, 224, 0.68);
+    --c-text-tertiary: rgba(243, 236, 224, 0.42);
+    --c-border: rgba(255, 255, 255, 0.1);
+    --c-accent: #e08a54;
+    --c-accent-on: #241812;
+    --c-recording: #e85a42;
+    --c-error: #e85a42;
+    --c-error-soft: rgba(232, 90, 66, 0.16);
+    --c-warning: #d9a63e;
+    --c-warning-soft: rgba(217, 166, 62, 0.16);
+    --c-success: #6fa876;
+    color-scheme: dark;
+  }
+}
+
+/* 手動でダークを選んだ場合 */
+:root[data-theme='dark'] {
+  --c-bg: #211d19;
+  --c-surface: #2b241e;
+  --c-text: #f3ece0;
+  --c-text-secondary: rgba(243, 236, 224, 0.68);
+  --c-text-tertiary: rgba(243, 236, 224, 0.42);
+  --c-border: rgba(255, 255, 255, 0.1);
+  --c-accent: #e08a54;
+  --c-accent-on: #241812;
+  --c-recording: #e85a42;
+  --c-error: #e85a42;
+  --c-error-soft: rgba(232, 90, 66, 0.16);
+  --c-warning: #d9a63e;
+  --c-warning-soft: rgba(217, 166, 62, 0.16);
+  --c-success: #6fa876;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family:
+    'Noto Sans JP', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* iOS の意図しない拡大・長押しメニューを抑制（テキスト選択が必要な箇所は個別に許可） */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* タブラー数字（タイマー用） */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reduce Motion: すべてのアニメーション/トランジションを無効化 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Safe Area ユーティリティ */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
