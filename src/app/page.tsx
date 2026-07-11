@@ -23,7 +23,7 @@ import {
   shareData,
   shortcutJson,
 } from '@/lib/share';
-import { formatDate, formatDuration, formatTimer } from '@/lib/format';
+import { combineTranscripts, formatBytes, formatDate, formatDuration, formatTimer } from '@/lib/format';
 import {
   AlertTriangleIcon,
   BookIcon,
@@ -40,6 +40,7 @@ import {
   ShareIcon,
   StopIcon,
   TrashIcon,
+  UploadIcon,
   XIcon,
 } from '@/components/icons';
 import { Waveform } from '@/components/Waveform';
@@ -49,6 +50,7 @@ import { SaveSheet, type SaveChoice } from '@/components/SaveSheet';
 type Screen =
   | 'home'
   | 'quick'
+  | 'files'
   | 'permission'
   | 'recording'
   | 'transcribing'
@@ -56,6 +58,9 @@ type Screen =
   | 'result'
   | 'error'
   | 'empty';
+
+/** 日記の元になった入力方法。結果画面のラベル表示に使う。 */
+type InputMode = 'record' | 'quick' | 'files';
 
 const MIN_RECORDING_MS = 2000;
 const LONG_RECORDING_MS = 20 * 60 * 1000; // 20分の目安
@@ -80,8 +85,12 @@ export default function AppPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [saveSheetOpen, setSaveSheetOpen] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>('record');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [transcribeProgress, setTranscribeProgress] = useState({ current: 0, total: 0 });
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const refreshDrafts = useCallback(async () => {
     try {
@@ -146,6 +155,7 @@ export default function AppPage() {
 
   async function runTranscribeAndGenerate(blob: Blob) {
     setScreen('transcribing');
+    setInputMode('record');
     let text = '';
     try {
       const filename = `recording.${extForMime(recorder.mimeType)}`;
@@ -160,6 +170,74 @@ export default function AppPage() {
     }
     setTranscript(text);
     await runGenerate(text);
+  }
+
+  // --- 複数音声ファイルのアップロード -------------------------------------
+  function triggerFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const chosen = Array.from(e.target.files ?? []);
+    if (chosen.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...chosen]);
+      setScreen('files');
+    }
+    // 同じファイルを選び直しても onChange が発火するようリセット
+    e.target.value = '';
+  }
+
+  function removeSelectedFile(index: number) {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function cancelFiles() {
+    setSelectedFiles([]);
+    setScreen('home');
+  }
+
+  /** 429（レート制限）のときは Retry-After ぶん待って1回だけ再試行する。 */
+  async function transcribeWithRetry(file: File): Promise<string> {
+    try {
+      return await transcribeAudio(file, file.name || 'audio');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429 && err.retryAfter) {
+        const waitMs = Math.min(err.retryAfter, 30) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        return transcribeAudio(file, file.name || 'audio');
+      }
+      throw err;
+    }
+  }
+
+  async function submitFiles() {
+    if (selectedFiles.length === 0) return;
+    const files = selectedFiles;
+    setScreen('transcribing');
+    setInputMode('files');
+    setTranscribeProgress({ current: 0, total: files.length });
+
+    const parts: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setTranscribeProgress({ current: i + 1, total: files.length });
+        const text = await transcribeWithRetry(files[i]);
+        parts.push(text);
+      }
+    } catch (err) {
+      handleApiError(err, '音声ファイルの文字起こしに失敗しました。');
+      return;
+    }
+
+    const combined = combineTranscripts(parts);
+    if (!combined) {
+      setScreen('empty');
+      return;
+    }
+    setTranscript(combined);
+    setDurationSec(0);
+    setDraftId(null);
+    await runGenerate(combined);
   }
 
   async function runGenerate(text: string) {
@@ -215,6 +293,7 @@ export default function AppPage() {
     setTranscript(text);
     setDurationSec(0);
     setDraftId(null);
+    setInputMode('quick');
     await runGenerate(text);
   }
 
@@ -316,6 +395,8 @@ export default function AppPage() {
     setTranscript('');
     setQuickText('');
     setDurationSec(0);
+    setSelectedFiles([]);
+    setInputMode('record');
     recorder.reset();
     setScreen('home');
   }
@@ -337,6 +418,8 @@ export default function AppPage() {
     setDraftId(d.id);
     setTranscript(d.diary.rawTranscript);
     setDurationSec(d.durationSec ?? 0);
+    setSelectedFiles([]);
+    setInputMode('record');
     setTranscriptOpen(false);
     setScreen('result');
   }
@@ -391,6 +474,7 @@ export default function AppPage() {
             setQuickText('');
             setScreen('quick');
           }}
+          onPickFiles={triggerFilePicker}
           onResume={resumeDraft}
           onDiscard={discardDraft}
         />
@@ -402,6 +486,16 @@ export default function AppPage() {
           onChange={setQuickText}
           onBack={() => setScreen('home')}
           onSubmit={submitQuick}
+        />
+      )}
+
+      {screen === 'files' && (
+        <FilesScreen
+          files={selectedFiles}
+          onRemove={removeSelectedFile}
+          onAddMore={triggerFilePicker}
+          onCancel={cancelFiles}
+          onSubmit={submitFiles}
         />
       )}
 
@@ -426,7 +520,9 @@ export default function AppPage() {
           title={screen === 'transcribing' ? '文字起こし中…' : '日記を生成中…'}
           subtitle={
             screen === 'transcribing'
-              ? '話した内容を文字にしています'
+              ? inputMode === 'files' && transcribeProgress.total > 1
+                ? `音声ファイルを文字起こし中…（${transcribeProgress.current}/${transcribeProgress.total}）`
+                : '話した内容を文字にしています'
               : 'あなたの言葉から日記をまとめています'
           }
           onCancel={resetToHome}
@@ -442,14 +538,16 @@ export default function AppPage() {
           message={errorMsg}
           canRetry={transcript.length > 0}
           onRetry={() => runGenerate(transcript)}
-          onBack={() => setScreen(diary ? 'result' : 'home')}
+          onBack={() =>
+            setScreen(diary ? 'result' : selectedFiles.length > 0 ? 'files' : 'home')
+          }
         />
       )}
 
       {screen === 'result' && diary && (
         <ResultScreen
           diary={diary}
-          durationSec={durationSec}
+          sourceLabel={sourceLabel(inputMode, durationSec, selectedFiles.length)}
           transcriptOpen={transcriptOpen}
           onToggleTranscript={() => setTranscriptOpen((v) => !v)}
           onChangeTitle={(t) => updateDiary({ title: t })}
@@ -473,8 +571,23 @@ export default function AppPage() {
         onSelect={onSheetSelect}
         onClose={() => setSaveSheetOpen(false)}
       />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*"
+        multiple
+        className="hidden"
+        onChange={onFilesChosen}
+      />
     </main>
   );
+}
+
+/** 結果画面ヘッダーに出す入力元ラベル（録音時間 / 手入力 / 音声ファイルN件）。 */
+function sourceLabel(mode: InputMode, durationSec: number, fileCount: number): string {
+  if (mode === 'files') return `音声ファイル${fileCount}件から作成`;
+  if (durationSec > 0) return `録音時間 ${formatDuration(durationSec)}`;
+  return '手入力';
 }
 
 // =========================================================================
@@ -486,6 +599,7 @@ function HomeScreen({
   onOpenSettings,
   onRecord,
   onQuick,
+  onPickFiles,
   onResume,
   onDiscard,
 }: {
@@ -493,6 +607,7 @@ function HomeScreen({
   onOpenSettings: () => void;
   onRecord: () => void;
   onQuick: () => void;
+  onPickFiles: () => void;
   onResume: (d: Draft) => void;
   onDiscard: (id: string) => void;
 }) {
@@ -552,13 +667,20 @@ function HomeScreen({
 
       {/* フッター: 親指到達域 */}
       <div className="sticky bottom-0 mt-auto bg-gradient-to-t from-bg via-bg to-transparent px-6 pb-safe pt-6">
-        <div className="flex flex-col items-center gap-3 pb-3">
+        <div className="flex flex-col items-center gap-2 pb-3">
           <button
             onClick={onQuick}
             className="flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-5 text-[14px] font-medium text-text active:opacity-70"
           >
             <KeyboardIcon width={18} height={18} />
             すぐ話す（キーボード入力）
+          </button>
+          <button
+            onClick={onPickFiles}
+            className="flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-5 text-[14px] font-medium text-text active:opacity-70"
+          >
+            <UploadIcon width={18} height={18} />
+            音声ファイルをアップロード
           </button>
           <button
             onClick={onRecord}
@@ -638,6 +760,84 @@ function QuickScreen({
           className="mb-3 flex h-14 w-full items-center justify-center rounded-full bg-accent text-[17px] font-bold text-accent-on shadow-cta active:scale-[0.99] disabled:opacity-50"
         >
           日記にする
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FilesScreen({
+  files,
+  onRemove,
+  onAddMore,
+  onCancel,
+  onSubmit,
+}: {
+  files: File[];
+  onRemove: (index: number) => void;
+  onAddMore: () => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="flex min-h-dvh flex-col pt-safe">
+      <header className="flex items-center gap-2 px-4 pt-4">
+        <button
+          onClick={onCancel}
+          aria-label="戻る"
+          className="flex h-11 w-11 items-center justify-center rounded-full active:opacity-60"
+        >
+          <ChevronLeftIcon />
+        </button>
+        <h1 className="text-[18px] font-bold">音声ファイルから作る</h1>
+      </header>
+      <div className="flex-1 px-6 pt-4">
+        <p className="mb-3 text-[13px] leading-relaxed text-text-secondary">
+          選んだ順番につなげて1つの日記にします。ボイスメモなどで録音した音声ファイルを選んでください。
+        </p>
+
+        {files.length === 0 ? (
+          <div className="mt-16 text-center text-[14px] text-text-tertiary">
+            まだファイルが選ばれていません。
+          </div>
+        ) : (
+          <ul className="overflow-hidden rounded-card border border-border bg-surface">
+            {files.map((f, i) => (
+              <li
+                key={`${f.name}-${f.lastModified}-${i}`}
+                className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-border' : ''}`}
+              >
+                <span className="flex-1 truncate text-[14px] text-text">{f.name}</span>
+                <span className="shrink-0 text-[12px] text-text-tertiary">
+                  {formatBytes(f.size)}
+                </span>
+                <button
+                  onClick={() => onRemove(i)}
+                  aria-label={`${f.name} を削除`}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center text-text-tertiary active:opacity-60"
+                >
+                  <XIcon width={16} height={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <button
+          onClick={onAddMore}
+          className="mt-3 flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-[14px] font-medium text-text active:opacity-70"
+        >
+          <UploadIcon width={16} height={16} />
+          さらに追加する
+        </button>
+      </div>
+      <div className="sticky bottom-0 bg-bg px-6 pb-safe pt-3">
+        <button
+          onClick={onSubmit}
+          disabled={files.length === 0}
+          className="mb-3 flex h-14 w-full items-center justify-center rounded-full bg-accent text-[17px] font-bold text-accent-on shadow-cta active:scale-[0.99] disabled:opacity-50"
+        >
+          文字起こしして日記にする
         </button>
       </div>
     </div>
@@ -839,7 +1039,7 @@ function ErrorScreen({
 
 function ResultScreen({
   diary,
-  durationSec,
+  sourceLabel,
   transcriptOpen,
   onToggleTranscript,
   onChangeTitle,
@@ -856,7 +1056,7 @@ function ResultScreen({
   onPrimarySave,
 }: {
   diary: Diary;
-  durationSec: number;
+  sourceLabel: string;
   transcriptOpen: boolean;
   onToggleTranscript: () => void;
   onChangeTitle: (v: string) => void;
@@ -882,9 +1082,7 @@ function ResultScreen({
         >
           <ChevronLeftIcon />
         </button>
-        <span className="pr-2 text-[13px] text-text-tertiary">
-          {durationSec > 0 ? `録音時間 ${formatDuration(durationSec)}` : '手入力'}
-        </span>
+        <span className="pr-2 text-[13px] text-text-tertiary">{sourceLabel}</span>
       </header>
 
       <div className="flex-1 overflow-y-auto px-6 pt-4">

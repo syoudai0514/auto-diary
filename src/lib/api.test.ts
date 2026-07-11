@@ -67,6 +67,35 @@ describe('APIクライアント: タイムアウト', () => {
   });
 });
 
+describe('APIクライアント: レート制限', () => {
+  it('429 は Retry-After ヘッダーを retryAfter に反映する', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'too_many_requests' }), {
+            status: 429,
+            headers: { 'Retry-After': '12' },
+          }),
+        ),
+      ),
+    );
+    const err = await generateDiaryApi('t', 'natural').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(429);
+    expect(err.retryAfter).toBe(12);
+  });
+
+  it('Retry-After が無い場合は undefined', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ error: 'x' }), { status: 500 }))),
+    );
+    const err = await generateDiaryApi('t', 'natural').catch((e) => e);
+    expect(err.retryAfter).toBeUndefined();
+  });
+});
+
 describe('APIクライアント: login', () => {
   it('401 を投げ返す', async () => {
     vi.stubGlobal(

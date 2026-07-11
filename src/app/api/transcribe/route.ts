@@ -29,8 +29,9 @@ export async function POST(req: Request) {
   if (unauth) return unauth;
 
   const limited = rateLimit(`transcribe:${clientKey(req)}`, {
-    capacity: 3,
-    refillPerSec: 3 / 60, // 1分あたり3回程度
+    // 複数音声ファイルをまとめてアップロードする用途があるため、単発録音より余裕を持たせる
+    capacity: 6,
+    refillPerSec: 6 / 60, // 1分あたり6回程度
   });
   if (!limited.ok) {
     return NextResponse.json(

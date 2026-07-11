@@ -5,10 +5,13 @@ import type { Diary, DiaryStyleId } from './diary';
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  /** 429 のとき、何秒待てば再試行できるか（Retry-After ヘッダー由来）。 */
+  retryAfter?: number;
+  constructor(status: number, code: string, message: string, retryAfter?: number) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
     this.name = 'ApiError';
   }
 }
@@ -23,7 +26,14 @@ async function parseError(res: Response): Promise<ApiError> {
   } catch {
     /* ignore */
   }
-  return new ApiError(res.status, code, message);
+  const retryAfterRaw = res.headers.get('Retry-After');
+  const retryAfter = retryAfterRaw ? Number(retryAfterRaw) : undefined;
+  return new ApiError(
+    res.status,
+    code,
+    message,
+    Number.isFinite(retryAfter) ? retryAfter : undefined,
+  );
 }
 
 /** タイムアウト付き fetch。 */
