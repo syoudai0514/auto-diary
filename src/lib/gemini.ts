@@ -26,12 +26,15 @@ export function transcribeModel(): string {
 }
 
 /**
- * 音声アップロードの上限。Gemini へは base64 のインラインデータとして送るため、
- * 保守的な既定値にしている（無料枠のリクエストサイズ制限に配慮）。
+ * 1リクエストあたりの音声アップロード上限。
+ * Vercel のサーバーレス関数はリクエストボディサイズに約4.5MBのプラットフォーム上限が
+ * あり、それを超えるとこちらのコードに到達する前にリクエスト自体が拒否される。
+ * そのため既定値は安全マージンを取って4MBにしている（それより大きい音声は
+ * クライアント側で自動的にチャンク分割してから複数リクエストで送信する）。
  */
 export function maxAudioBytes(): number {
   const n = Number(process.env.MAX_AUDIO_BYTES);
-  return Number.isFinite(n) && n > 0 ? n : 15 * 1024 * 1024; // 15MB
+  return Number.isFinite(n) && n > 0 ? n : 4 * 1024 * 1024; // 4MB
 }
 
 /** GenerateContentResponse からテキストを安全に取り出す（text は undefined になりうる）。 */

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Diary } from '@/lib/diary';
 import { ApiError, generateDiaryApi, transcribeAudio } from '@/lib/api';
 import { extForMime, useRecorder } from '@/hooks/useRecorder';
+import { chunkAudioIfNeeded, decodeAudioBuffer } from '@/lib/audioChunk';
 import { DEFAULT_SETTINGS, loadSettings, type Settings } from '@/lib/settings';
 import { loadProfile } from '@/lib/profile';
 import {
@@ -67,6 +68,12 @@ type InputMode = 'record' | 'quick' | 'files';
 
 const MIN_RECORDING_MS = 2000;
 const LONG_RECORDING_MS = 20 * 60 * 1000; // 20分の目安
+/**
+ * 1リクエストあたりの音声送信上限。サーバー側の既定値(4MB)と合わせている。
+ * Vercelのサーバーレス関数はリクエストボディに約4.5MBのプラットフォーム上限があるため、
+ * これを超える音声はアップロード前にクライアント側でチャンク分割する。
+ */
+const MAX_CLIENT_AUDIO_BYTES = 4 * 1024 * 1024;
 
 export default function AppPage() {
   const router = useRouter();
@@ -87,6 +94,7 @@ export default function AppPage() {
   const [inputMode, setInputMode] = useState<InputMode>('record');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [transcribeProgress, setTranscribeProgress] = useState({ current: 0, total: 0 });
+  const [isPreparingAudio, setIsPreparingAudio] = useState(false);
   const [profileMarkdown, setProfileMarkdown] = useState('');
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,31 +154,14 @@ export default function AppPage() {
       return;
     }
     setDurationSec(Math.round(elapsed / 1000));
-    await runTranscribeAndGenerate(blob);
+    setInputMode('record');
+    const filename = `recording.${extForMime(recorder.mimeType)}`;
+    await transcribeItemsAndGenerate([{ blob, filename }]);
   }
 
   function cancelRecording() {
     recorder.cancel();
     setScreen('home');
-  }
-
-  async function runTranscribeAndGenerate(blob: Blob) {
-    setScreen('transcribing');
-    setInputMode('record');
-    let text = '';
-    try {
-      const filename = `recording.${extForMime(recorder.mimeType)}`;
-      text = await transcribeAudio(blob, filename);
-    } catch (err) {
-      handleApiError(err, '文字起こしに失敗しました。');
-      return;
-    }
-    if (!text.trim()) {
-      setScreen('empty');
-      return;
-    }
-    setTranscript(text);
-    await runGenerate(text);
   }
 
   // --- 複数音声ファイルのアップロード -------------------------------------
@@ -202,36 +193,71 @@ export default function AppPage() {
    * Retry-After ヘッダーがあればそれに従い、無ければ既定20秒待つ
    * （Gemini側のレート制限はヘッダーを返さないことがあるため）。
    */
-  async function transcribeWithRetry(file: File): Promise<string> {
+  async function transcribeWithRetry(blob: Blob, filename: string): Promise<string> {
     try {
-      return await transcribeAudio(file, file.name || 'audio');
+      return await transcribeAudio(blob, filename);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         const waitSec = err.retryAfter ?? 20;
         const waitMs = Math.min(waitSec, 30) * 1000;
         await new Promise((resolve) => setTimeout(resolve, waitMs));
-        return transcribeAudio(file, file.name || 'audio');
+        return transcribeAudio(blob, filename);
       }
       throw err;
     }
   }
 
-  async function submitFiles() {
-    if (selectedFiles.length === 0) return;
-    const files = selectedFiles;
-    setScreen('transcribing');
-    setInputMode('files');
-    setTranscribeProgress({ current: 0, total: files.length });
+  /**
+   * サーバーのボディサイズ上限（既定4MB、Vercelのプラットフォーム上限に配慮）を
+   * 超える音声を、自己完結したWAVチャンクに分割する。上限以下ならそのまま返す。
+   */
+  async function expandToChunks(
+    blob: Blob,
+    baseName: string,
+  ): Promise<{ blob: Blob; filename: string }[]> {
+    if (blob.size <= MAX_CLIENT_AUDIO_BYTES) {
+      return [{ blob, filename: baseName }];
+    }
+    const chunks = await chunkAudioIfNeeded(blob, MAX_CLIENT_AUDIO_BYTES, decodeAudioBuffer);
+    if (chunks.length <= 1) {
+      return [{ blob: chunks[0] ?? blob, filename: baseName }];
+    }
+    const stem = baseName.replace(/\.[^.]+$/, '') || 'audio';
+    return chunks.map((c, i) => ({ blob: c, filename: `${stem}-part${i + 1}.wav` }));
+  }
 
+  /**
+   * 録音・アップロードされた音声（複数可）を文字起こしして日記を生成する共通処理。
+   * サイズ上限を超える項目は自動でチャンク分割してから、順番に文字起こしして結合する。
+   */
+  async function transcribeItemsAndGenerate(rawItems: { blob: Blob; filename: string }[]) {
+    setScreen('transcribing');
+    setTranscribeProgress({ current: 0, total: 0 });
+
+    let items: { blob: Blob; filename: string }[];
+    const needsExpansion = rawItems.some((it) => it.blob.size > MAX_CLIENT_AUDIO_BYTES);
+    try {
+      if (needsExpansion) setIsPreparingAudio(true);
+      const expanded = await Promise.all(rawItems.map((it) => expandToChunks(it.blob, it.filename)));
+      items = expanded.flat();
+    } catch {
+      setErrorMsg('音声の分割処理に失敗しました。この端末では対応していない可能性があります。');
+      setScreen('error');
+      return;
+    } finally {
+      setIsPreparingAudio(false);
+    }
+
+    setTranscribeProgress({ current: 0, total: items.length });
     const parts: string[] = [];
     try {
-      for (let i = 0; i < files.length; i++) {
-        setTranscribeProgress({ current: i + 1, total: files.length });
-        const text = await transcribeWithRetry(files[i]);
+      for (let i = 0; i < items.length; i++) {
+        setTranscribeProgress({ current: i + 1, total: items.length });
+        const text = await transcribeWithRetry(items[i].blob, items[i].filename);
         parts.push(text);
       }
     } catch (err) {
-      handleApiError(err, '音声ファイルの文字起こしに失敗しました。');
+      handleApiError(err, '文字起こしに失敗しました。');
       return;
     }
 
@@ -241,9 +267,16 @@ export default function AppPage() {
       return;
     }
     setTranscript(combined);
+    await runGenerate(combined);
+  }
+
+  async function submitFiles() {
+    if (selectedFiles.length === 0) return;
+    const files = selectedFiles;
+    setInputMode('files');
     setDurationSec(0);
     setDraftId(null);
-    await runGenerate(combined);
+    await transcribeItemsAndGenerate(files.map((f) => ({ blob: f, filename: f.name || 'audio' })));
   }
 
   async function runGenerate(text: string) {
@@ -420,6 +453,8 @@ export default function AppPage() {
     setDurationSec(0);
     setSelectedFiles([]);
     setInputMode('record');
+    setIsPreparingAudio(false);
+    setTranscribeProgress({ current: 0, total: 0 });
     recorder.reset();
     setScreen('home');
   }
@@ -540,12 +575,20 @@ export default function AppPage() {
 
       {(screen === 'transcribing' || screen === 'generating') && (
         <ProcessingScreen
-          title={screen === 'transcribing' ? '文字起こし中…' : '日記を生成中…'}
+          title={
+            screen === 'transcribing'
+              ? isPreparingAudio
+                ? '音声を準備中…'
+                : '文字起こし中…'
+              : '日記を生成中…'
+          }
           subtitle={
             screen === 'transcribing'
-              ? inputMode === 'files' && transcribeProgress.total > 1
-                ? `音声ファイルを文字起こし中…（${transcribeProgress.current}/${transcribeProgress.total}）`
-                : '話した内容を文字にしています'
+              ? isPreparingAudio
+                ? '大きな音声を分割しています。少しお待ちください'
+                : transcribeProgress.total > 1
+                  ? `音声を文字起こし中…（${transcribeProgress.current}/${transcribeProgress.total}）`
+                  : '話した内容を文字にしています'
               : 'あなたの言葉から日記をまとめています'
           }
           onCancel={resetToHome}
