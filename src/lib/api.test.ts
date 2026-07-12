@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { Diary } from './diary';
-import { transcribeAudio, generateDiaryApi, reviseDiaryApi, updateProfileApi, login, ApiError } from './api';
+import {
+  transcribeAudio,
+  generateDiaryApi,
+  reviseDiaryApi,
+  updateProfileApi,
+  login,
+  signup,
+  getGeminiKeyStatus,
+  saveGeminiKey,
+  ApiError,
+} from './api';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -200,8 +210,67 @@ describe('APIクライアント: login', () => {
         Promise.resolve(new Response(JSON.stringify({ error: 'invalid_password' }), { status: 401 })),
       ),
     );
-    const err = await login('bad').catch((e) => e);
+    const err = await login('taro', 'bad').catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe('invalid_password');
+  });
+});
+
+describe('APIクライアント: signup', () => {
+  it('ユーザー名・パスワード・招待コードを送信する', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await signup('taro', 'a-long-password', 'invite-123');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body).toEqual({ username: 'taro', password: 'a-long-password', inviteCode: 'invite-123' });
+  });
+
+  it('招待コードが違えば ApiError を投げる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ error: 'invalid_invite' }), { status: 401 })),
+      ),
+    );
+    const err = await signup('taro', 'a-long-password', 'wrong').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_invite');
+  });
+});
+
+describe('APIクライアント: Gemini APIキーの登録状況', () => {
+  it('getGeminiKeyStatus は hasKey を返す', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ hasKey: true }), { status: 200 }))),
+    );
+    const result = await getGeminiKeyStatus();
+    expect(result.hasKey).toBe(true);
+  });
+
+  it('saveGeminiKey は apiKey を送信する', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await saveGeminiKey('AIzaExampleKey');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body).toEqual({ apiKey: 'AIzaExampleKey' });
+  });
+
+  it('saveGeminiKey はサーバーエラー時に ApiError を投げる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ error: 'invalid_key' }), { status: 400 })),
+      ),
+    );
+    const err = await saveGeminiKey('x').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_key');
   });
 });

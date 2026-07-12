@@ -47,11 +47,20 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs
   }
 }
 
-export async function login(password: string): Promise<void> {
+export async function login(username: string, password: string): Promise<void> {
   const res = await fetch('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) throw await parseError(res);
+}
+
+export async function signup(username: string, password: string, inviteCode: string): Promise<void> {
+  const res = await fetch('/api/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, inviteCode }),
   });
   if (!res.ok) throw await parseError(res);
 }
@@ -168,4 +177,21 @@ export async function updateProfileApi(
   if (!res.ok) throw await parseError(res);
   const data = await res.json();
   return data.markdown as string;
+}
+
+/** 自分のGemini APIキーが登録済みかどうかを取得する（キー自体は返らない）。 */
+export async function getGeminiKeyStatus(): Promise<{ hasKey: boolean }> {
+  const res = await fetch('/api/account/gemini-key');
+  if (!res.ok) throw await parseError(res);
+  return res.json();
+}
+
+/** 自分のGemini APIキーを登録・更新する。 */
+export async function saveGeminiKey(apiKey: string): Promise<void> {
+  const res = await fetch('/api/account/gemini-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!res.ok) throw await parseError(res);
 }

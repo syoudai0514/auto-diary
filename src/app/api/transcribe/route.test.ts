@@ -22,6 +22,17 @@ vi.mock('@/lib/gemini', async (importOriginal) => {
   };
 });
 
+let storedUser: { id: string; geminiKeyEncrypted: string | null } | null = {
+  id: 'test-user',
+  geminiKeyEncrypted: 'v1:fake-encrypted-key',
+};
+vi.mock('@/lib/userStore', () => ({
+  getUserById: (id: string) => Promise.resolve(storedUser?.id === id ? storedUser : null),
+}));
+vi.mock('@/lib/crypto', () => ({
+  decryptSecret: () => 'fake-gemini-key',
+}));
+
 import { POST } from './route';
 
 function formReq(file: File | null, ip = `9.9.9.${Math.floor(Math.random() * 250)}`): Request {
@@ -38,7 +49,8 @@ beforeEach(async () => {
   _resetRateLimits();
   generateContent.mockReset();
   generateContent.mockResolvedValue({ text: '文字起こし結果です' });
-  cookieToken = (await createSessionToken()).token;
+  storedUser = { id: 'test-user', geminiKeyEncrypted: 'v1:fake-encrypted-key' };
+  cookieToken = (await createSessionToken('test-user')).token;
 });
 
 describe('POST /api/transcribe', () => {
@@ -47,6 +59,14 @@ describe('POST /api/transcribe', () => {
     const file = new File(['x'], 'a.webm', { type: 'audio/webm' });
     const res = await POST(formReq(file));
     expect(res.status).toBe(401);
+  });
+
+  it('Gemini APIキー未設定は 400 no_api_key', async () => {
+    storedUser = { id: 'test-user', geminiKeyEncrypted: null };
+    const file = new File([new Uint8Array(10)], 'a.webm', { type: 'audio/webm' });
+    const res = await POST(formReq(file));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('no_api_key');
   });
 
   it('音声なしは 400', async () => {

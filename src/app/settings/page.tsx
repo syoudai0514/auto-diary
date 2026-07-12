@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { DIARY_STYLES } from '@/lib/diary';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type SaveTarget, type Settings } from '@/lib/settings';
 import { loadTheme, saveTheme, type Theme } from '@/lib/theme';
-import { logout } from '@/lib/api';
+import { logout, getGeminiKeyStatus, saveGeminiKey, ApiError } from '@/lib/api';
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 
 const SAVE_TARGETS: { id: SaveTarget; label: string }[] = [
@@ -28,10 +28,19 @@ export default function SettingsPage() {
   const [theme, setThemeState] = useState<Theme>('system');
   const [loaded, setLoaded] = useState(false);
 
+  const [geminiKeyStatus, setGeminiKeyStatus] = useState<'loading' | 'set' | 'unset'>('loading');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [geminiKeyBusy, setGeminiKeyBusy] = useState(false);
+  const [geminiKeyError, setGeminiKeyError] = useState('');
+  const [geminiKeySaved, setGeminiKeySaved] = useState(false);
+
   useEffect(() => {
     setSettings(loadSettings());
     setThemeState(loadTheme());
     setLoaded(true);
+    getGeminiKeyStatus()
+      .then((r) => setGeminiKeyStatus(r.hasKey ? 'set' : 'unset'))
+      .catch(() => setGeminiKeyStatus('unset'));
   }, []);
 
   function update(patch: Partial<Settings>) {
@@ -48,6 +57,28 @@ export default function SettingsPage() {
   async function onLogout() {
     await logout();
     window.location.assign('/login');
+  }
+
+  async function onSaveGeminiKey() {
+    const key = geminiKeyInput.trim();
+    if (!key) return;
+    setGeminiKeyBusy(true);
+    setGeminiKeyError('');
+    setGeminiKeySaved(false);
+    try {
+      await saveGeminiKey(key);
+      setGeminiKeyStatus('set');
+      setGeminiKeyInput('');
+      setGeminiKeySaved(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setGeminiKeyError('APIキーの保存に失敗しました。もう一度お試しください。');
+    } finally {
+      setGeminiKeyBusy(false);
+    }
   }
 
   if (!loaded) return null;
@@ -115,6 +146,41 @@ export default function SettingsPage() {
         <p className="mt-1.5 px-1 text-[12px] text-text-tertiary">
           家族構成や自分の立場をテキスト・音声で登録しておくと、日記生成のときにAIが参考にします。
         </p>
+      </section>
+
+      <section className="mt-7">
+        <h2 className="mb-2 px-1 text-[13px] font-semibold text-text-secondary">Gemini APIキー</h2>
+        <div className="rounded-card border border-border bg-surface p-4">
+          <p className="text-[13px] text-text-secondary">
+            状態:{' '}
+            {geminiKeyStatus === 'loading' && '確認中…'}
+            {geminiKeyStatus === 'set' && <span className="font-semibold text-accent">設定済み</span>}
+            {geminiKeyStatus === 'unset' && (
+              <span className="font-semibold text-error">未設定（文字起こし・日記生成にはキーが必要です）</span>
+            )}
+          </p>
+          <input
+            value={geminiKeyInput}
+            onChange={(e) => setGeminiKeyInput(e.target.value)}
+            placeholder="AIza... で始まるキーを貼り付け"
+            aria-label="Gemini APIキー"
+            className="mt-3 h-12 w-full rounded-chip border border-border bg-bg px-4 text-[15px] outline-none focus:border-accent"
+          />
+          {geminiKeyError && <p className="mt-2 text-[12.5px] text-error">{geminiKeyError}</p>}
+          {geminiKeySaved && <p className="mt-2 text-[12.5px] text-accent">保存しました</p>}
+          <button
+            onClick={onSaveGeminiKey}
+            disabled={geminiKeyBusy || geminiKeyInput.trim().length === 0}
+            className="mt-3 flex h-11 w-full items-center justify-center rounded-full bg-accent text-[14.5px] font-bold text-accent-on active:scale-[0.99] disabled:opacity-50"
+          >
+            {geminiKeyBusy ? '保存中…' : 'キーを保存'}
+          </button>
+          <p className="mt-3 text-[12px] leading-relaxed text-text-tertiary">
+            自分専用の無料キーを、<a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="underline">Google AI Studio</a>
+            で取得できます。Googleアカウントでログイン→「Create API key」→ 発行された{' '}
+            <code>AIza...</code> から始まるキーをコピーしてここに貼り付けてください（クレジットカード登録不要）。
+          </p>
+        </div>
       </section>
 
       <section className="mt-7">

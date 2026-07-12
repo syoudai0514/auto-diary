@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
-import { clientKey, rateLimit } from '@/lib/rateLimit';
+import { rateLimit } from '@/lib/rateLimit';
 import { chatModel, getGemini } from '@/lib/gemini';
+import { decryptSecret } from '@/lib/crypto';
+import { getUserById } from '@/lib/userStore';
 import { ProfileUpdateError, updateProfile } from '@/lib/updateProfile';
 
 export const runtime = 'nodejs';
@@ -18,10 +20,11 @@ const MAX_INPUT_CHARS = 4000;
  * 音声・本文はログに一切出力しない。
  */
 export async function POST(req: Request) {
-  const unauth = await requireAuth();
-  if (unauth) return unauth;
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+  const { userId } = auth;
 
-  const limited = rateLimit(`profile-update:${clientKey(req)}`, {
+  const limited = rateLimit(`profile-update:${userId}`, {
     capacity: 5,
     refillPerSec: 5 / 60,
   });
@@ -65,8 +68,18 @@ export async function POST(req: Request) {
     );
   }
 
+  const user = await getUserById(userId);
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!user.geminiKeyEncrypted) {
+    return NextResponse.json(
+      { error: 'no_api_key', message: 'Gemini APIキーが未設定です。設定画面から登録してください。' },
+      { status: 400 },
+    );
+  }
+
   try {
-    const markdown = await updateProfile(getGemini(), {
+    const apiKey = decryptSecret(user.geminiKeyEncrypted);
+    const markdown = await updateProfile(getGemini(apiKey), {
       currentMarkdown: currentMarkdown as string,
       newInput,
       model: chatModel(),

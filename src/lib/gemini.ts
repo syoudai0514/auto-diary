@@ -1,16 +1,17 @@
 import { GoogleGenAI } from '@google/genai';
 
-let client: GoogleGenAI | null = null;
-
-/** 遅延初期化した Gemini クライアントを返す。 */
-export function getGemini(): GoogleGenAI {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY が設定されていません');
+/**
+ * Gemini クライアントを生成する。
+ * 各ユーザーが自分自身のGemini APIキーを持ち込む(BYOK)ため、呼び出し元は
+ * リクエストごとに、認証済みユーザーのアカウントに保存された（復号済みの）
+ * APIキーを明示的に渡す。クライアントの生成自体は軽量なため、モジュール単位で
+ * キャッシュはしない。
+ */
+export function getGemini(apiKey: string): GoogleGenAI {
+  if (!apiKey) {
+    throw new Error('Gemini APIキーが指定されていません');
   }
-  if (!client) {
-    client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  }
-  return client;
+  return new GoogleGenAI({ apiKey });
 }
 
 // gemini-2.0-flash 系は 2026-06-01 付けで廃止されたため、既定値は

@@ -16,6 +16,17 @@ vi.mock('@/lib/gemini', () => ({
   extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
 }));
 
+let storedUser: { id: string; geminiKeyEncrypted: string | null } | null = {
+  id: 'test-user',
+  geminiKeyEncrypted: 'v1:fake-encrypted-key',
+};
+vi.mock('@/lib/userStore', () => ({
+  getUserById: (id: string) => Promise.resolve(storedUser?.id === id ? storedUser : null),
+}));
+vi.mock('@/lib/crypto', () => ({
+  decryptSecret: () => 'fake-gemini-key',
+}));
+
 import { POST } from './route';
 
 function req(body: unknown, ip = `3.3.3.${Math.floor(Math.random() * 250)}`): Request {
@@ -30,7 +41,8 @@ beforeEach(async () => {
   _resetRateLimits();
   generateContent.mockReset();
   generateContent.mockResolvedValue({ text: '## 家族構成\n- 妻(ママ)\n- 長男' });
-  cookieToken = (await createSessionToken()).token;
+  storedUser = { id: 'test-user', geminiKeyEncrypted: 'v1:fake-encrypted-key' };
+  cookieToken = (await createSessionToken('test-user')).token;
 });
 
 describe('POST /api/profile/update', () => {
@@ -38,6 +50,13 @@ describe('POST /api/profile/update', () => {
     cookieToken = undefined;
     const res = await POST(req({ currentMarkdown: '', newInput: '長男が生まれた' }));
     expect(res.status).toBe(401);
+  });
+
+  it('Gemini APIキー未設定は 400 no_api_key', async () => {
+    storedUser = { id: 'test-user', geminiKeyEncrypted: null };
+    const res = await POST(req({ currentMarkdown: '', newInput: '長男が生まれた' }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('no_api_key');
   });
 
   it('newInput が空なら 400', async () => {

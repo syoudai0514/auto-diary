@@ -18,6 +18,18 @@ vi.mock('@/lib/gemini', () => ({
   extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
 }));
 
+// --- モック: アカウント情報（Gemini APIキー） ---
+let storedUser: { id: string; geminiKeyEncrypted: string | null } | null = {
+  id: 'test-user',
+  geminiKeyEncrypted: 'v1:fake-encrypted-key',
+};
+vi.mock('@/lib/userStore', () => ({
+  getUserById: (id: string) => Promise.resolve(storedUser?.id === id ? storedUser : null),
+}));
+vi.mock('@/lib/crypto', () => ({
+  decryptSecret: () => 'fake-gemini-key',
+}));
+
 import { POST } from './route';
 
 const validDiaryJson = JSON.stringify({
@@ -43,7 +55,8 @@ beforeEach(async () => {
   _resetRateLimits();
   generateContent.mockReset();
   generateContent.mockResolvedValue({ text: validDiaryJson });
-  cookieToken = (await createSessionToken()).token;
+  storedUser = { id: 'test-user', geminiKeyEncrypted: 'v1:fake-encrypted-key' };
+  cookieToken = (await createSessionToken('test-user')).token;
 });
 
 describe('POST /api/generate', () => {
@@ -51,6 +64,14 @@ describe('POST /api/generate', () => {
     cookieToken = undefined;
     const res = await POST(req({ transcript: 'あ', style: 'natural' }));
     expect(res.status).toBe(401);
+  });
+
+  it('Gemini APIキー未設定は 400 no_api_key', async () => {
+    storedUser = { id: 'test-user', geminiKeyEncrypted: null };
+    const res = await POST(req({ transcript: 'あ', style: 'natural' }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('no_api_key');
   });
 
   it('空の文字起こしは 400', async () => {

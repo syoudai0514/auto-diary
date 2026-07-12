@@ -3,21 +3,22 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { login, ApiError } from '@/lib/api';
+import { signup, ApiError } from '@/lib/api';
 import { MicIcon } from '@/components/icons';
 
-export default function LoginPage() {
+export default function SignupPage() {
   return (
     <Suspense fallback={null}>
-      <LoginForm />
+      <SignupForm />
     </Suspense>
   );
 }
 
-function LoginForm() {
+function SignupForm() {
   const params = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,17 +27,21 @@ function LoginForm() {
     setError(null);
     setBusy(true);
     try {
-      await login(username, password);
+      await signup(username, password, inviteCode);
       const next = params.get('next') || '/';
       // ミドルウェア再評価のため location 遷移
       window.location.assign(next.startsWith('/') ? next : '/');
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError('試行回数が多すぎます。少し待ってからお試しください。');
-      } else if (err instanceof ApiError && err.code === 'invalid_password') {
-        setError('ユーザー名またはパスワードが違います。');
+      } else if (err instanceof ApiError && err.code === 'invalid_invite') {
+        setError('招待コードが違います。');
+      } else if (err instanceof ApiError && err.code === 'username_taken') {
+        setError('そのユーザー名は既に使われています。');
+      } else if (err instanceof ApiError && err.code === 'invalid') {
+        setError('ユーザー名は3〜32文字の英数字、パスワードは8文字以上にしてください。');
       } else {
-        setError('ログインに失敗しました。');
+        setError('登録に失敗しました。');
       }
       setBusy(false);
     }
@@ -49,9 +54,9 @@ function LoginForm() {
           <div className="mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] bg-accent text-accent-on">
             <MicIcon width={34} height={34} />
           </div>
-          <h1 className="text-[22px] font-bold leading-tight">音声日記</h1>
+          <h1 className="text-[22px] font-bold leading-tight">アカウントを作成</h1>
           <p className="mt-2 max-w-[260px] text-[14px] leading-relaxed text-text-secondary">
-            ユーザー名とパスワードを入力してください。
+            招待コードと、使いたいユーザー名・パスワードを入力してください。
           </p>
         </div>
 
@@ -62,18 +67,28 @@ function LoginForm() {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="ユーザー名"
+            placeholder="ユーザー名（英数字、3〜32文字）"
             aria-label="ユーザー名"
             className="h-14 w-full rounded-2xl border border-border bg-surface px-5 text-[16px] text-text outline-none focus:border-accent"
           />
           <input
             type="password"
             inputMode="text"
-            autoComplete="current-password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="パスワード"
+            placeholder="パスワード（8文字以上）"
             aria-label="パスワード"
+            className="h-14 w-full rounded-2xl border border-border bg-surface px-5 text-[16px] text-text outline-none focus:border-accent"
+          />
+          <input
+            type="text"
+            inputMode="text"
+            autoComplete="off"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            placeholder="招待コード"
+            aria-label="招待コード"
             className="h-14 w-full rounded-2xl border border-border bg-surface px-5 text-[16px] text-text outline-none focus:border-accent"
           />
           {error && (
@@ -83,17 +98,17 @@ function LoginForm() {
           )}
           <button
             type="submit"
-            disabled={busy || username.length === 0 || password.length === 0}
+            disabled={busy || username.length === 0 || password.length === 0 || inviteCode.length === 0}
             className="mt-1 flex h-14 w-full items-center justify-center rounded-full bg-accent text-[17px] font-semibold text-accent-on shadow-cta transition active:scale-[0.99] disabled:opacity-50"
           >
-            {busy ? 'ログイン中…' : 'ログイン'}
+            {busy ? '登録中…' : 'アカウントを作成'}
           </button>
         </form>
 
         <p className="mt-6 text-center text-[13px] text-text-tertiary">
-          招待コードをお持ちの方は
-          <Link href="/signup" className="ml-1 font-semibold text-accent">
-            アカウントを作成
+          すでにアカウントをお持ちの方は
+          <Link href="/login" className="ml-1 font-semibold text-accent">
+            ログイン
           </Link>
         </p>
       </div>

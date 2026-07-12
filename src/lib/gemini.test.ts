@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { guessAudioMimeType, extractText, chatModel, transcribeModel } from './gemini';
+import { guessAudioMimeType, extractText, chatModel, transcribeModel, getGemini } from './gemini';
+
+describe('getGemini', () => {
+  it('APIキーを渡せばクライアントを生成できる', () => {
+    expect(() => getGemini('fake-api-key')).not.toThrow();
+  });
+
+  it('空のAPIキーは例外を投げる', () => {
+    expect(() => getGemini('')).toThrow();
+  });
+});
 
 describe('guessAudioMimeType', () => {
   it('ブラウザが正しい type を報告していればそれを使う', () => {

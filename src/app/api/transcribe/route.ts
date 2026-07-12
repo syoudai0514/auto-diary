@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
-import { clientKey, rateLimit } from '@/lib/rateLimit';
+import { rateLimit } from '@/lib/rateLimit';
 import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
+import { decryptSecret } from '@/lib/crypto';
+import { getUserById } from '@/lib/userStore';
 
 export const runtime = 'nodejs';
 // 文字起こしは時間がかかるため上限を引き上げる（Fluid Compute有効時の上限に合わせる）
@@ -25,10 +27,11 @@ const TRANSCRIBE_PROMPT = [
  * 音声データ・本文はログに一切出力しない。
  */
 export async function POST(req: Request) {
-  const unauth = await requireAuth();
-  if (unauth) return unauth;
+  const auth = await requireAuth();
+  if (auth instanceof NextResponse) return auth;
+  const { userId } = auth;
 
-  const limited = rateLimit(`transcribe:${clientKey(req)}`, {
+  const limited = rateLimit(`transcribe:${userId}`, {
     // 複数音声ファイルをまとめてアップロードする用途があるため、単発録音より余裕を持たせる
     capacity: 6,
     refillPerSec: 6 / 60, // 1分あたり6回程度
@@ -65,12 +68,22 @@ export async function POST(req: Request) {
     );
   }
 
+  const user = await getUserById(userId);
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!user.geminiKeyEncrypted) {
+    return NextResponse.json(
+      { error: 'no_api_key', message: 'Gemini APIキーが未設定です。設定画面から登録してください。' },
+      { status: 400 },
+    );
+  }
+
   try {
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = guessAudioMimeType(file.name, file.type);
 
-    const ai = getGemini();
+    const apiKey = decryptSecret(user.geminiKeyEncrypted);
+    const ai = getGemini(apiKey);
     const response = await ai.models.generateContent({
       model: transcribeModel(),
       contents: [

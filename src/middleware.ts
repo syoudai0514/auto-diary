@@ -10,6 +10,8 @@ import { SESSION_COOKIE, verifySessionToken } from '@/lib/auth';
 const PUBLIC_PATHS = new Set<string>([
   '/login',
   '/api/login',
+  '/signup',
+  '/api/signup',
   '/manifest.webmanifest',
   '/sw.js',
   '/favicon.ico',
@@ -29,9 +31,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const authed = await verifySessionToken(token);
+  const session = await verifySessionToken(token);
 
-  if (authed) return NextResponse.next();
+  if (session) return NextResponse.next();
 
   // API は 401 を返す
   if (pathname.startsWith('/api/')) {
