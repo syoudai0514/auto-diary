@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildDayOneUrl,
+  buildRunShortcutUrl,
   buildShortcutUrl,
   fullText,
   isShortcutUrlTooLong,
   shareData,
   shortcutJson,
+  OPEN_APP_SHORTCUT_NAME,
   SHORTCUT_NAME,
 } from './share';
 
@@ -90,6 +92,24 @@ describe('Day One用URL生成', () => {
     // デコードして復元できる
     const params = new URLSearchParams(rawQuery);
     expect(params.get('entry')).toContain('1行目\n2行目');
+  });
+});
+
+describe('buildRunShortcutUrl（URLスキーム非対応アプリ向けフォールバック）', () => {
+  it('名前だけを渡す shortcuts:// URL を生成する（inputなし）', () => {
+    const url = buildRunShortcutUrl(OPEN_APP_SHORTCUT_NAME);
+    expect(url.startsWith('shortcuts://run-shortcut?')).toBe(true);
+    expect(url).toContain(`name=${encodeURIComponent(OPEN_APP_SHORTCUT_NAME)}`);
+    expect(url).not.toContain('input=');
+    expect(url).not.toContain('text=');
+  });
+
+  it('日本語のショートカット名も正しくエンコードされる', () => {
+    const url = buildRunShortcutUrl('テスト用ショートカット');
+    const rawQuery = url.split('?')[1];
+    expect(rawQuery).not.toContain('テスト');
+    const params = new URLSearchParams(rawQuery);
+    expect(params.get('name')).toBe('テスト用ショートカット');
   });
 });
 

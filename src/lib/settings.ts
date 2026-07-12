@@ -8,7 +8,7 @@ import { DEFAULT_STYLE, isDiaryStyleId, type DiaryStyleId } from './diary';
  * 「自分について・登場人物」は src/lib/profile.ts（プロフィール Markdown）で別管理する。
  */
 
-export type SaveTarget = 'apple' | 'dayone' | 'clipboard' | 'ask';
+export type SaveTarget = 'apple' | 'dayone' | 'clipboard' | 'openApp' | 'ask';
 
 export interface Settings {
   style: DiaryStyleId;
@@ -51,5 +51,5 @@ export function saveSettings(s: Settings): void {
 }
 
 function isSaveTarget(v: unknown): v is SaveTarget {
-  return v === 'apple' || v === 'dayone' || v === 'clipboard' || v === 'ask';
+  return v === 'apple' || v === 'dayone' || v === 'clipboard' || v === 'openApp' || v === 'ask';
 }

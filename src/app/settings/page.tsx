@@ -12,6 +12,7 @@ const SAVE_TARGETS: { id: SaveTarget; label: string }[] = [
   { id: 'apple', label: 'Appleジャーナル' },
   { id: 'dayone', label: 'Day One' },
   { id: 'clipboard', label: 'クリップボード' },
+  { id: 'openApp', label: '他の日記アプリを開く（コピー+起動）' },
   { id: 'ask', label: '毎回選ぶ' },
 ];
 

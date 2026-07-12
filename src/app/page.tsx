@@ -17,11 +17,13 @@ import {
 import { copyText } from '@/lib/clipboard';
 import {
   buildDayOneUrl,
+  buildRunShortcutUrl,
   buildShortcutUrl,
   fullText,
   isShortcutUrlTooLong,
   shareData,
   shortcutJson,
+  OPEN_APP_SHORTCUT_NAME,
 } from '@/lib/share';
 import { combineTranscripts, formatBytes, formatDate, formatDuration, formatTimer } from '@/lib/format';
 import {
@@ -31,6 +33,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  ExternalLinkIcon,
   KeyboardIcon,
   MicIcon,
   PauseIcon,
@@ -356,6 +359,20 @@ export default function AppPage() {
     await finishSave();
   }
 
+  /**
+   * URLスキーム・共有シートに対応していない日記アプリ向けのフォールバック。
+   * 全文をコピーしてから、Shortcuts経由でアプリを開く（本文は手動で貼り付ける）。
+   * 事前に「日記アプリを開く」という名前で「アプリを開く」だけのショートカットを
+   * 作成しておく必要がある（README参照）。
+   */
+  async function saveViaOpenApp() {
+    if (!diary) return;
+    const ok = await copyText(fullText(diary.title, diary.body));
+    if (ok) showToast('コピーしました。アプリを開いています…');
+    window.location.href = buildRunShortcutUrl(OPEN_APP_SHORTCUT_NAME);
+    await finishSave();
+  }
+
   async function onPrimarySave() {
     switch (settings.saveTarget) {
       case 'apple':
@@ -364,6 +381,8 @@ export default function AppPage() {
         return saveToDayOne();
       case 'clipboard':
         return saveToClipboard();
+      case 'openApp':
+        return saveViaOpenApp();
       default:
         setSaveSheetOpen(true);
     }
@@ -373,6 +392,7 @@ export default function AppPage() {
     setSaveSheetOpen(false);
     if (choice === 'apple') return saveToApple();
     if (choice === 'dayone') return saveToDayOne();
+    if (choice === 'openApp') return saveViaOpenApp();
     return saveToClipboard();
   }
 
@@ -562,6 +582,7 @@ export default function AppPage() {
           onShare={shareSheet}
           onSaveApple={saveToApple}
           onSaveDayOne={saveToDayOne}
+          onSaveOpenApp={saveViaOpenApp}
           onRewrite={() => runGenerate(transcript)}
           onDelete={discardCurrent}
           onPrimarySave={onPrimarySave}
@@ -1057,6 +1078,7 @@ function ResultScreen({
   onShare,
   onSaveApple,
   onSaveDayOne,
+  onSaveOpenApp,
   onRewrite,
   onDelete,
   onPrimarySave,
@@ -1074,6 +1096,7 @@ function ResultScreen({
   onShare: () => void;
   onSaveApple: () => void;
   onSaveDayOne: () => void;
+  onSaveOpenApp: () => void;
   onRewrite: () => void;
   onDelete: () => void;
   onPrimarySave: () => void;
@@ -1133,6 +1156,11 @@ function ResultScreen({
         <div className="-mx-6 mt-6 flex gap-2 overflow-x-auto px-6 pb-2">
           <Chip icon={<BookIcon width={16} height={16} />} label="Appleジャーナル" onClick={onSaveApple} />
           <Chip icon={<BookIcon width={16} height={16} />} label="Day One" onClick={onSaveDayOne} />
+          <Chip
+            icon={<ExternalLinkIcon width={16} height={16} />}
+            label="他のアプリを開く"
+            onClick={onSaveOpenApp}
+          />
           <Chip icon={<CopyIcon width={16} height={16} />} label="タイトル" onClick={onCopyTitle} />
           <Chip icon={<CopyIcon width={16} height={16} />} label="本文" onClick={onCopyBody} />
           <Chip icon={<CopyIcon width={16} height={16} />} label="全文" onClick={onCopyAll} />

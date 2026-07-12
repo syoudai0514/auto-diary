@@ -1,8 +1,8 @@
 'use client';
 
-import { BookIcon, CopyIcon } from './icons';
+import { BookIcon, CopyIcon, ExternalLinkIcon } from './icons';
 
-export type SaveChoice = 'apple' | 'dayone' | 'clipboard';
+export type SaveChoice = 'apple' | 'dayone' | 'clipboard' | 'openApp';
 
 /** 「毎回選ぶ」設定時に保存先を選ぶボトムシート。 */
 export function SaveSheet({
@@ -19,6 +19,11 @@ export function SaveSheet({
     { id: 'apple', label: 'Appleジャーナルに保存', icon: <BookIcon width={20} height={20} /> },
     { id: 'dayone', label: 'Day Oneに保存', icon: <BookIcon width={20} height={20} /> },
     { id: 'clipboard', label: 'クリップボードにコピー', icon: <CopyIcon width={20} height={20} /> },
+    {
+      id: 'openApp',
+      label: '他の日記アプリを開く（コピー+起動）',
+      icon: <ExternalLinkIcon width={20} height={20} />,
+    },
   ];
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">

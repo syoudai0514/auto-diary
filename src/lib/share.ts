@@ -14,6 +14,13 @@ export interface SharePayload {
 export const SHORTCUT_NAME = '音声日記を保存';
 
 /**
+ * URLスキーム・共有シート・Shortcutsアクションのいずれにも対応していない
+ * 日記アプリ向けのフォールバック用ショートカット名。README の手順と一致させる。
+ * 中身は「アプリを開く」の1アクションのみ（本文はクリップボード経由で渡す）。
+ */
+export const OPEN_APP_SHORTCUT_NAME = '日記アプリを開く';
+
+/**
  * URL の長さ制限（保守的な目安）。
  * iOS Safari で shortcuts:// を開く際、極端に長い URL は失敗しうるため、
  * これを超える場合はクリップボード経由の代替方式に切り替える。
@@ -68,6 +75,16 @@ export function buildDayOneUrl(options: {
   if (journal) params.set('journal', journal);
   if (tags.length > 0) params.set('tags', tags.join(','));
   return `dayone://post?${params.toString()}`;
+}
+
+/**
+ * 名前だけ指定してショートカットを起動する URL を生成する（入力データなし）。
+ * URLスキームや共有シートに対応していないアプリを、Shortcutsの「アプリを開く」
+ * アクション経由で開くためのフォールバックに使う。
+ */
+export function buildRunShortcutUrl(name: string): string {
+  const params = new URLSearchParams({ name });
+  return `shortcuts://run-shortcut?${params.toString()}`;
 }
 
 /** タイトルと本文をまとめた「全文コピー」用テキスト。 */
