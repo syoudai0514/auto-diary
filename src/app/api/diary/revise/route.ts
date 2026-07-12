@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
-import { rateLimit } from '@/lib/rateLimit';
+import { rateLimitDistributed } from '@/lib/rateLimit';
 import { chatModel, getGemini } from '@/lib/gemini';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { DEFAULT_STYLE, DiarySchema, isDiaryStyleId } from '@/lib/diary';
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
 
-  const limited = rateLimit(`revise:${userId}`, {
+  const limited = await rateLimitDistributed(`revise:${userId}`, {
     capacity: 5,
     refillPerSec: 5 / 60,
   });

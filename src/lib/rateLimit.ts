@@ -1,7 +1,15 @@
+import { Redis } from '@upstash/redis';
+
 /**
- * ごく簡単なインメモリのレート制限（トークンバケット）。
- * 個人利用・単一インスタンス前提の軽量な連続呼び出し防止。
- * サーバーレスではインスタンスごとにリセットされうるが、暴発防止には十分。
+ * レート制限。
+ *
+ * - rateLimit(): インメモリのトークンバケット。単一インスタンス内での
+ *   連続呼び出し防止（ローカル開発・テスト・Redis未設定時のフォールバック）。
+ * - rateLimitDistributed(): Upstash Redis を使った固定ウィンドウ方式。
+ *   サーバーレスの複数インスタンスをまたいで制限を効かせる
+ *   （ログイン・サインアップの総当たり/招待コード推測対策として重要）。
+ *   Redis未設定・Redis障害時はインメモリ実装へフォールバックする
+ *   （fail-open: レート制限のためにログインが止まる事態を避け、可用性を優先）。
  */
 
 interface Bucket {
@@ -52,6 +60,59 @@ export function rateLimit(
 /** テスト用: バケットを全消去。 */
 export function _resetRateLimits() {
   buckets.clear();
+}
+
+// --- 分散レート制限（Upstash Redis / 固定ウィンドウ） ----------------------
+
+let redisClient: Redis | null | undefined;
+
+function getRateLimitRedis(): Redis | null {
+  if (redisClient !== undefined) return redisClient;
+  const url = process.env.KV_REST_API_URL;
+  const token = process.env.KV_REST_API_TOKEN;
+  redisClient = url && token ? new Redis({ url, token, enableAutoPipelining: false }) : null;
+  return redisClient;
+}
+
+/** テスト用: Redisクライアントのキャッシュを破棄（環境変数の変更を反映させる）。 */
+export function _resetRateLimitRedis() {
+  redisClient = undefined;
+}
+
+/**
+ * 複数インスタンスをまたいで効くレート制限。
+ * ウィンドウ長は「バケットが満タンから空になるまでの時間」（capacity / refillPerSec）
+ * に合わせ、1ウィンドウあたり capacity 回まで許可する。これにより各ルートの
+ * 実効レートは従来のトークンバケット設定とほぼ同じになる。
+ */
+export async function rateLimitDistributed(
+  key: string,
+  opts: RateLimitOptions,
+  now: number = Date.now(),
+): Promise<RateLimitResult> {
+  const redis = getRateLimitRedis();
+  if (!redis) return rateLimit(key, opts, now);
+
+  const windowSec = Math.max(1, Math.round(opts.capacity / opts.refillPerSec));
+  const nowSec = Math.floor(now / 1000);
+  const windowStart = Math.floor(nowSec / windowSec) * windowSec;
+  const redisKey = `rl:${key}:${windowStart}`;
+
+  try {
+    const count = await redis.incr(redisKey);
+    if (count === 1) {
+      // ウィンドウ終了後にキーを掃除する（多少の猶予を持たせる）
+      await redis.expire(redisKey, windowSec + 10);
+    }
+    if (count <= opts.capacity) {
+      return { ok: true, retryAfter: 0 };
+    }
+    return { ok: false, retryAfter: Math.max(1, windowStart + windowSec - nowSec) };
+  } catch {
+    // Redis障害時はインメモリ実装で継続（インスタンス内の防御は保たれる）
+    console.error('[rateLimit] Redisに接続できないためインメモリ制限にフォールバック');
+    return rateLimit(key, opts, now);
+  }
 }
 
 /** リクエストからクライアント識別キーを得る（IP 優先、無ければ固定キー）。 */

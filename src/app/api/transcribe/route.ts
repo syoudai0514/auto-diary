@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
-import { rateLimit } from '@/lib/rateLimit';
+import { rateLimitDistributed } from '@/lib/rateLimit';
 import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   if (auth instanceof NextResponse) return auth;
   const { userId } = auth;
 
-  const limited = rateLimit(`transcribe:${userId}`, {
+  const limited = await rateLimitDistributed(`transcribe:${userId}`, {
     // 複数音声ファイルをまとめてアップロードする用途があるため、単発録音より余裕を持たせる
     capacity: 6,
     refillPerSec: 6 / 60, // 1分あたり6回程度

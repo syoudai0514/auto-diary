@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireAuth } from '@/lib/apiAuth';
-import { clientKey, rateLimit } from '@/lib/rateLimit';
+import { clientKey, rateLimitDistributed } from '@/lib/rateLimit';
 import { encryptSecret } from '@/lib/crypto';
 import { getUserById, setUserGeminiKey } from '@/lib/userStore';
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth();
   if (auth instanceof NextResponse) return auth;
 
-  const limited = rateLimit(`account-gemini-key:${clientKey(req)}`, {
+  const limited = await rateLimitDistributed(`account-gemini-key:${clientKey(req)}`, {
     capacity: 5,
     refillPerSec: 5 / 60,
   });

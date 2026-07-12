@@ -104,8 +104,12 @@ async function main() {
     const executablePath = process.env.E2E_CHROMIUM_PATH || undefined;
     browser = await chromium.launch(executablePath ? { executablePath } : {});
 
+    let contextCount = 0;
     const newPage = async () => {
+      contextCount++;
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+      // フローごとに別IPを名乗り、IPベースのレート制限（signup等）を互いに独立させる
+      await context.setExtraHTTPHeaders({ 'x-forwarded-for': `10.99.0.${contextCount}` });
       const page = await context.newPage();
       page.on('pageerror', (err) => console.log('  [pageerror]', err.message));
       return page;

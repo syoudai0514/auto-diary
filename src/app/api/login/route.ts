@@ -6,7 +6,7 @@ import {
 } from '@/lib/auth';
 import { verifyPassword } from '@/lib/crypto';
 import { getUserByUsername } from '@/lib/userStore';
-import { clientKey, rateLimit } from '@/lib/rateLimit';
+import { clientKey, rateLimitDistributed } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +16,7 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: Request) {
   // ログイン試行のレート制限（総当たり防止）
-  const limited = rateLimit(`login:${clientKey(req)}`, {
+  const limited = await rateLimitDistributed(`login:${clientKey(req)}`, {
     capacity: 5,
     refillPerSec: 5 / 60, // 1分あたり5回程度
   });

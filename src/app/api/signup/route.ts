@@ -7,7 +7,7 @@ import {
 } from '@/lib/auth';
 import { hashPassword, timingSafeEqualString } from '@/lib/crypto';
 import { createUser } from '@/lib/userStore';
-import { clientKey, rateLimit } from '@/lib/rateLimit';
+import { clientKey, rateLimitDistributed } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -28,7 +28,7 @@ const SignupSchema = z.object({
  */
 export async function POST(req: Request) {
   // 総当たり・招待コード推測対策のレート制限
-  const limited = rateLimit(`signup:${clientKey(req)}`, {
+  const limited = await rateLimitDistributed(`signup:${clientKey(req)}`, {
     capacity: 5,
     refillPerSec: 5 / 3600, // 1時間あたり5回程度
   });
