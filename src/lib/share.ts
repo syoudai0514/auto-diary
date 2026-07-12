@@ -22,10 +22,11 @@ export const OPEN_APP_SHORTCUT_NAME = '日記アプリを開く';
 
 /**
  * URL の長さ制限（保守的な目安）。
- * iOS Safari で shortcuts:// を開く際、極端に長い URL は失敗しうるため、
- * これを超える場合はクリップボード経由の代替方式に切り替える。
+ * iOS の shortcuts:// スキームは、Safari一般のURL長制限よりかなり手前
+ * （数千文字程度）で起動自体が無反応・無言で失敗することがあるため、
+ * 少し長い日記でも安全側に倒してクリップボード経由の代替方式に切り替える。
  */
-export const URL_LENGTH_LIMIT = 8000;
+export const URL_LENGTH_LIMIT = 2000;
 
 /**
  * Appleジャーナル保存用ショートカットを起動する URL を生成する。

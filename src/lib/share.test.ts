@@ -54,6 +54,12 @@ describe('Appleジャーナル用URL生成', () => {
     expect(isShortcutUrlTooLong(huge)).toBe(true);
     expect(isShortcutUrlTooLong(payload)).toBe(false);
   });
+
+  it('数分の発話から生成される程度の長さの日記でも、長すぎる判定になる（iOS側の実際の起動失敗を防ぐため保守的に判定する）', () => {
+    // 2分ほど話した内容から生成される日記を想定した、数百文字程度の本文
+    const moderate = { ...payload, body: 'きょうは天気が良かったので散歩に出かけた。'.repeat(15) };
+    expect(isShortcutUrlTooLong(moderate)).toBe(true);
+  });
 });
 
 describe('Day One用URL生成', () => {

@@ -25,6 +25,7 @@ import {
   shareData,
   shortcutJson,
   OPEN_APP_SHORTCUT_NAME,
+  SHORTCUT_NAME,
 } from '@/lib/share';
 import { combineTranscripts, formatBytes, formatDate, formatDuration, formatTimer } from '@/lib/format';
 import {
@@ -455,15 +456,20 @@ export default function AppPage() {
   async function saveToApple() {
     const p = currentPayload();
     if (!p) return;
-    // URL が長すぎる場合はクリップボード経由の代替方式
+    // URL が長すぎると shortcuts:// の起動自体が失敗する（無反応・無言で終わる）ため、
+    // その場合は本文を含めない短いURLで起動し、ショートカット側でクリップボードから取得してもらう。
     if (isShortcutUrlTooLong(p)) {
       const ok = await copyText(JSON.stringify(shortcutJson(p)));
-      if (ok) {
-        showToast('内容をコピーしました。ショートカットに貼り付けてください');
-      }
+      window.location.href = buildRunShortcutUrl(SHORTCUT_NAME);
+      await finishSave(
+        ok
+          ? '内容をコピーしました。ショートカットに貼り付けてください'
+          : 'ショートカットを起動しました',
+      );
+      return;
     }
     window.location.href = buildShortcutUrl(p);
-    await finishSave();
+    await finishSave('ショートカットを起動しました。ジャーナルに保存されたか確認してください');
   }
 
   async function saveToDayOne() {
@@ -477,14 +483,13 @@ export default function AppPage() {
     // Day One 未インストールでもスキームを試み、フォールバックとして本文をコピー
     await copyText(fullText(diary.title, diary.body));
     window.location.href = url;
-    await finishSave();
+    await finishSave('Day Oneを開いています（本文はコピー済みです）');
   }
 
   async function saveToClipboard() {
     if (!diary) return;
     const ok = await copyText(fullText(diary.title, diary.body));
-    if (ok) showToast('コピーしました');
-    await finishSave();
+    await finishSave(ok ? 'コピーしました' : '保存しました');
   }
 
   /**
@@ -496,9 +501,8 @@ export default function AppPage() {
   async function saveViaOpenApp() {
     if (!diary) return;
     const ok = await copyText(fullText(diary.title, diary.body));
-    if (ok) showToast('コピーしました。アプリを開いています…');
     window.location.href = buildRunShortcutUrl(OPEN_APP_SHORTCUT_NAME);
-    await finishSave();
+    await finishSave(ok ? 'コピーしました。アプリを開いています…' : 'アプリを開いています…');
   }
 
   async function onPrimarySave() {
@@ -524,16 +528,15 @@ export default function AppPage() {
     return saveToClipboard();
   }
 
-  /** 保存後の後始末: 下書きを削除しホームへ。 */
-  async function finishSave() {
-    showToast('保存しました');
-    if (draftId) {
-      try {
-        await deleteDraft(draftId);
-      } catch {
-        /* noop */
-      }
-    }
+  /**
+   * 保存操作（ショートカット起動・URLスキーム・コピー）を行った直後の後始末。
+   * ショートカットやDay One等への保存はURLを開くだけで、実際に保存できたかを
+   * このアプリからは確認できない（アプリを何度も渡り歩いて保存する場合もある）ため、
+   * ここでは下書きを削除せずホームへ戻すだけにする。下書きは「最近の記録」から
+   * 手動で削除するか、一定期間で自動的に消える（listDrafts参照）。
+   */
+  async function finishSave(message = '保存しました') {
+    showToast(message);
     setTimeout(async () => {
       await refreshDrafts();
       resetToHome();

@@ -70,7 +70,33 @@ export async function deleteDraft(id: string): Promise<void> {
   await tx('readwrite', (store) => store.delete(id));
 }
 
-export async function listDrafts(): Promise<Draft[]> {
+/**
+ * 下書きを保持しておく期間。保存操作（ショートカット起動等）は成功したか
+ * この端末からは確認できず、複数のアプリへ保存し直すこともあるため、
+ * 保存後もすぐには削除せずこの期間だけ「最近の記録」に残す。
+ */
+export const DEFAULT_DRAFT_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 保存済みの下書き一覧を、更新日時の新しい順で返す。
+ * 作成から maxAgeMs を過ぎた下書きは自動的に削除して一覧から除く。
+ */
+export async function listDrafts(maxAgeMs: number = DEFAULT_DRAFT_RETENTION_MS): Promise<Draft[]> {
   const all = await tx<Draft[]>('readonly', (store) => store.getAll() as IDBRequest<Draft[]>);
-  return (all ?? []).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  const drafts = all ?? [];
+  const cutoff = Date.now() - maxAgeMs;
+  const fresh: Draft[] = [];
+  const expiredIds: string[] = [];
+  for (const d of drafts) {
+    const createdAtMs = Date.parse(d.createdAt);
+    if (Number.isFinite(createdAtMs) && createdAtMs < cutoff) {
+      expiredIds.push(d.id);
+    } else {
+      fresh.push(d);
+    }
+  }
+  if (expiredIds.length > 0) {
+    await Promise.all(expiredIds.map((id) => deleteDraft(id)));
+  }
+  return fresh.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
