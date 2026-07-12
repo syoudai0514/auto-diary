@@ -108,3 +108,31 @@ export async function generateDiaryApi(
   const data = await res.json();
   return data.diary as Diary;
 }
+
+/** 現在のプロフィール(Markdown)と新しい入力を統合し、更新後のMarkdownを取得する。 */
+export async function updateProfileApi(
+  currentMarkdown: string,
+  newInput: string,
+  timeoutMs = 60000,
+): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      '/api/profile/update',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentMarkdown, newInput }),
+      },
+      timeoutMs,
+    );
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(408, 'timeout', 'プロフィールの更新がタイムアウトしました。');
+    }
+    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
+  }
+  if (!res.ok) throw await parseError(res);
+  const data = await res.json();
+  return data.markdown as string;
+}

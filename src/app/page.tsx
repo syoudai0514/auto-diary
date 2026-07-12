@@ -6,6 +6,7 @@ import type { Diary } from '@/lib/diary';
 import { ApiError, generateDiaryApi, transcribeAudio } from '@/lib/api';
 import { extForMime, useRecorder } from '@/hooks/useRecorder';
 import { DEFAULT_SETTINGS, loadSettings, type Settings } from '@/lib/settings';
+import { loadProfile } from '@/lib/profile';
 import {
   Draft,
   deleteDraft,
@@ -83,6 +84,7 @@ export default function AppPage() {
   const [inputMode, setInputMode] = useState<InputMode>('record');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [transcribeProgress, setTranscribeProgress] = useState({ current: 0, total: 0 });
+  const [profileMarkdown, setProfileMarkdown] = useState('');
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -95,9 +97,10 @@ export default function AppPage() {
     }
   }, []);
 
-  // 初期ロード: 設定と下書き
+  // 初期ロード: 設定・プロフィール・下書き
   useEffect(() => {
     setSettings(loadSettings());
+    setProfileMarkdown(loadProfile().markdown);
     void refreshDrafts();
   }, [refreshDrafts]);
 
@@ -243,7 +246,7 @@ export default function AppPage() {
   async function runGenerate(text: string) {
     setScreen('generating');
     try {
-      const result = await generateDiaryApi(text, settings.style, settings.peopleContext || undefined);
+      const result = await generateDiaryApi(text, settings.style, profileMarkdown || undefined);
       setDiary(result);
       const id = draftId ?? newDraftId();
       setDraftId(id);

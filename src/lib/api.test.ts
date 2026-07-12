@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { transcribeAudio, generateDiaryApi, login, ApiError } from './api';
+import { transcribeAudio, generateDiaryApi, updateProfileApi, login, ApiError } from './api';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -117,6 +117,34 @@ describe('APIクライアント: レート制限', () => {
     );
     const err = await generateDiaryApi('t', 'natural').catch((e) => e);
     expect(err.retryAfter).toBeUndefined();
+  });
+});
+
+describe('APIクライアント: updateProfileApi', () => {
+  it('現在のMarkdownと新しい入力を送信し、更新後のMarkdownを返す', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ markdown: '## 更新後' }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await updateProfileApi('## 既存', '新しい情報');
+    expect(result).toBe('## 更新後');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body).toEqual({ currentMarkdown: '## 既存', newInput: '新しい情報' });
+  });
+
+  it('サーバーエラー時は ApiError を投げる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'update_failed', message: '失敗' }), { status: 502 }),
+        ),
+      ),
+    );
+    const err = await updateProfileApi('', 'x').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toBe('失敗');
   });
 });
 

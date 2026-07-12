@@ -3,17 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DIARY_STYLES } from '@/lib/diary';
-import {
-  DEFAULT_SETTINGS,
-  MAX_PEOPLE_CONTEXT_CHARS,
-  loadSettings,
-  saveSettings,
-  type SaveTarget,
-  type Settings,
-} from '@/lib/settings';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, type SaveTarget, type Settings } from '@/lib/settings';
 import { loadTheme, saveTheme, type Theme } from '@/lib/theme';
 import { logout } from '@/lib/api';
-import { ChevronLeftIcon } from '@/components/icons';
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 
 const SAVE_TARGETS: { id: SaveTarget; label: string }[] = [
   { id: 'apple', label: 'Appleジャーナル' },
@@ -109,20 +102,17 @@ export default function SettingsPage() {
 
       <section className="mt-7">
         <h2 className="mb-2 px-1 text-[13px] font-semibold text-text-secondary">
-          自分について・登場人物（任意）
+          自分について・登場人物
         </h2>
-        <textarea
-          value={settings.peopleContext}
-          onChange={(e) => update({ peopleContext: e.target.value.slice(0, MAX_PEOPLE_CONTEXT_CHARS) })}
-          placeholder={
-            '例: 私は4人家族の父です。妻はママ、子どもは長男・長女と呼びます。'
-          }
-          rows={4}
-          className="w-full resize-none rounded-card border border-border bg-surface p-4 text-[15px] leading-relaxed outline-none focus:border-accent"
-        />
+        <button
+          onClick={() => router.push('/profile')}
+          className="flex w-full items-center justify-between rounded-card border border-border bg-surface px-4 py-3.5 text-left text-[15px] active:opacity-70"
+        >
+          <span>プロフィールを編集</span>
+          <ChevronRightIcon width={18} height={18} className="text-text-tertiary" />
+        </button>
         <p className="mt-1.5 px-1 text-[12px] text-text-tertiary">
-          複数人の会話が録音に含まれる場合など、「誰が自分（一人称）で、周りの人をどう呼ぶか」をAIが判断する手がかりになります。
-          {settings.peopleContext.length}/{MAX_PEOPLE_CONTEXT_CHARS}文字
+          家族構成や自分の立場をテキスト・音声で登録しておくと、日記生成のときにAIが参考にします。
         </p>
       </section>
 

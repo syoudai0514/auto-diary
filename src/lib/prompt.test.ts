@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildSystemPrompt, buildUserPrompt } from './prompt';
+import {
+  buildSystemPrompt,
+  buildUserPrompt,
+  buildProfileUpdateSystemPrompt,
+  buildProfileUpdateUserPrompt,
+} from './prompt';
 
 describe('buildSystemPrompt', () => {
   it('絶対に守るルールが含まれる', () => {
@@ -42,5 +47,34 @@ describe('buildUserPrompt', () => {
     const p = buildUserPrompt('今日は散歩した');
     expect(p).toContain('今日は散歩した');
     expect(p).toContain('文字起こしここから');
+  });
+});
+
+describe('buildProfileUpdateSystemPrompt', () => {
+  it('Markdownのみ出力・情報保持・捏造禁止のルールを含む', () => {
+    const p = buildProfileUpdateSystemPrompt();
+    expect(p).toContain('Markdown');
+    expect(p).toContain('保持する');
+    expect(p).toContain('捏造しない');
+  });
+});
+
+describe('buildProfileUpdateUserPrompt', () => {
+  it('現在のプロフィールと新しい入力を両方含める', () => {
+    const p = buildProfileUpdateUserPrompt('## 家族構成\n- 妻', '子どもが生まれました');
+    expect(p).toContain('## 家族構成\n- 妻');
+    expect(p).toContain('子どもが生まれました');
+  });
+
+  it('現在のプロフィールが空でも壊れない', () => {
+    const p = buildProfileUpdateUserPrompt('', '私は父です');
+    expect(p).toContain('まだ何も登録されていません');
+    expect(p).toContain('私は父です');
+  });
+
+  it('前後の空白はトリムされる', () => {
+    const p = buildProfileUpdateUserPrompt('  既存  ', '  新規  ');
+    expect(p).toContain('----- 現在のプロフィールここから -----\n既存\n');
+    expect(p).toContain('----- 新しい情報ここから -----\n新規\n');
   });
 });
