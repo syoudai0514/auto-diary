@@ -63,7 +63,7 @@ export async function logout(): Promise<void> {
 export async function transcribeAudio(
   blob: Blob,
   filename: string,
-  timeoutMs = 90000,
+  timeoutMs = 120000,
 ): Promise<string> {
   const form = new FormData();
   form.append('file', blob, filename);

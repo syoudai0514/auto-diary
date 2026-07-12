@@ -69,11 +69,12 @@ type InputMode = 'record' | 'quick' | 'files';
 const MIN_RECORDING_MS = 2000;
 const LONG_RECORDING_MS = 20 * 60 * 1000; // 20分の目安
 /**
- * 1リクエストあたりの音声送信上限。サーバー側の既定値(4MB)と合わせている。
- * Vercelのサーバーレス関数はリクエストボディに約4.5MBのプラットフォーム上限があるため、
- * これを超える音声はアップロード前にクライアント側でチャンク分割する。
+ * 1リクエストあたりの音声送信上限。サーバー側の既定値(4MB、Vercelのプラットフォーム
+ * 上限約4.5MBに配慮した値)より小さくしている。1チャンクを小さく保つほど
+ * アップロード・文字起こしが速く終わり、タイムアウトしにくくなるため。
+ * （約2.5MB ≒ 16kHzモノラルで約80秒ぶんの音声）
  */
-const MAX_CLIENT_AUDIO_BYTES = 4 * 1024 * 1024;
+const MAX_CLIENT_AUDIO_BYTES = 2.5 * 1024 * 1024;
 
 export default function AppPage() {
   const router = useRouter();
