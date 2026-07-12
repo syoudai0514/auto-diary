@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Diary } from '@/lib/diary';
-import { ApiError, generateDiaryApi, transcribeAudio } from '@/lib/api';
+import { ApiError, generateDiaryApi, reviseDiaryApi, transcribeAudio } from '@/lib/api';
 import { extForMime, useRecorder } from '@/hooks/useRecorder';
 import { chunkAudioIfNeeded, decodeAudioBuffer } from '@/lib/audioChunk';
 import { DEFAULT_SETTINGS, loadSettings, type Settings } from '@/lib/settings';
@@ -34,6 +34,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  EditIcon,
   ExternalLinkIcon,
   KeyboardIcon,
   MicIcon,
@@ -96,6 +97,10 @@ export default function AppPage() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [transcribeProgress, setTranscribeProgress] = useState({ current: 0, total: 0 });
   const [isPreparingAudio, setIsPreparingAudio] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reviseInstruction, setReviseInstruction] = useState('');
+  const [reviseBusy, setReviseBusy] = useState<'none' | 'transcribing' | 'revising'>('none');
+  const [reviseError, setReviseError] = useState('');
   const [profileMarkdown, setProfileMarkdown] = useState('');
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -326,6 +331,87 @@ export default function AppPage() {
     }
   }
 
+  // --- 修正を依頼（テキスト or 音声） -------------------------------------
+  function toggleRevise() {
+    setReviseOpen((v) => !v);
+    setReviseError('');
+  }
+
+  function handleReviseError(err: unknown, fallback: string) {
+    if (err instanceof ApiError) {
+      if (err.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setReviseError(err.message || fallback);
+    } else {
+      setReviseError(fallback);
+    }
+  }
+
+  async function startReviseVoice() {
+    setReviseError('');
+    const ok = await recorder.start();
+    if (!ok) {
+      setReviseError(
+        recorder.error === 'permission'
+          ? 'マイクへのアクセスが許可されていません。iPhoneの設定を確認してください。'
+          : '録音を開始できませんでした。',
+      );
+    }
+  }
+
+  async function stopReviseVoice() {
+    const blob = await recorder.stop();
+    const elapsed = recorder.elapsedMs;
+    recorder.reset();
+    if (!blob || elapsed < MIN_RECORDING_MS || blob.size < 1024) {
+      setReviseError('音声が短すぎるか、検出されませんでした。');
+      return;
+    }
+    setReviseBusy('transcribing');
+    setReviseError('');
+    try {
+      const filename = `revise-input.${extForMime(recorder.mimeType)}`;
+      const text = await transcribeAudio(blob, filename);
+      if (!text.trim()) {
+        setReviseError('音声を認識できませんでした。');
+      } else {
+        setReviseInstruction((prev) => (prev ? `${prev}\n${text}` : text));
+      }
+    } catch (err) {
+      handleReviseError(err, '文字起こしに失敗しました。');
+    } finally {
+      setReviseBusy('none');
+    }
+  }
+
+  async function applyRevise() {
+    if (!diary) return;
+    const instruction = reviseInstruction.trim();
+    if (!instruction) return;
+    setReviseBusy('revising');
+    setReviseError('');
+    try {
+      const updated = await reviseDiaryApi(
+        transcript,
+        diary,
+        instruction,
+        settings.style,
+        profileMarkdown || undefined,
+      );
+      setDiary(updated);
+      if (draftId) await persistDraft(draftId, updated);
+      setReviseInstruction('');
+      setReviseOpen(false);
+      showToast('修正しました');
+    } catch (err) {
+      handleReviseError(err, '日記の修正に失敗しました。');
+    } finally {
+      setReviseBusy('none');
+    }
+  }
+
   // --- クイック入力（キーボード音声入力） -------------------------------
   async function submitQuick() {
     const text = quickText.trim();
@@ -456,6 +542,10 @@ export default function AppPage() {
     setInputMode('record');
     setIsPreparingAudio(false);
     setTranscribeProgress({ current: 0, total: 0 });
+    setReviseOpen(false);
+    setReviseInstruction('');
+    setReviseBusy('none');
+    setReviseError('');
     recorder.reset();
     setScreen('home');
   }
@@ -480,6 +570,9 @@ export default function AppPage() {
     setSelectedFiles([]);
     setInputMode('record');
     setTranscriptOpen(false);
+    setReviseOpen(false);
+    setReviseInstruction('');
+    setReviseError('');
     setScreen('result');
   }
 
@@ -630,6 +723,17 @@ export default function AppPage() {
           onRewrite={() => runGenerate(transcript)}
           onDelete={discardCurrent}
           onPrimarySave={onPrimarySave}
+          reviseOpen={reviseOpen}
+          reviseInstruction={reviseInstruction}
+          reviseBusy={reviseBusy}
+          reviseError={reviseError}
+          isRecordingRevise={recorder.status === 'recording'}
+          reviseElapsedMs={recorder.elapsedMs}
+          onToggleRevise={toggleRevise}
+          onChangeReviseInstruction={setReviseInstruction}
+          onStartReviseVoice={startReviseVoice}
+          onStopReviseVoice={stopReviseVoice}
+          onApplyRevise={applyRevise}
         />
       )}
 
@@ -1126,6 +1230,17 @@ function ResultScreen({
   onRewrite,
   onDelete,
   onPrimarySave,
+  reviseOpen,
+  reviseInstruction,
+  reviseBusy,
+  reviseError,
+  isRecordingRevise,
+  reviseElapsedMs,
+  onToggleRevise,
+  onChangeReviseInstruction,
+  onStartReviseVoice,
+  onStopReviseVoice,
+  onApplyRevise,
 }: {
   diary: Diary;
   sourceLabel: string;
@@ -1144,6 +1259,17 @@ function ResultScreen({
   onRewrite: () => void;
   onDelete: () => void;
   onPrimarySave: () => void;
+  reviseOpen: boolean;
+  reviseInstruction: string;
+  reviseBusy: 'none' | 'transcribing' | 'revising';
+  reviseError: string;
+  isRecordingRevise: boolean;
+  reviseElapsedMs: number;
+  onToggleRevise: () => void;
+  onChangeReviseInstruction: (v: string) => void;
+  onStartReviseVoice: () => void;
+  onStopReviseVoice: () => void;
+  onApplyRevise: () => void;
 }) {
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
@@ -1209,6 +1335,7 @@ function ResultScreen({
           <Chip icon={<CopyIcon width={16} height={16} />} label="本文" onClick={onCopyBody} />
           <Chip icon={<CopyIcon width={16} height={16} />} label="全文" onClick={onCopyAll} />
           <Chip icon={<ShareIcon width={16} height={16} />} label="共有" onClick={onShare} />
+          <Chip icon={<EditIcon width={16} height={16} />} label="修正を依頼" onClick={onToggleRevise} />
           <Chip icon={<RefreshIcon width={16} height={16} />} label="書き直す" onClick={onRewrite} />
           <Chip
             icon={<TrashIcon width={16} height={16} />}
@@ -1217,6 +1344,76 @@ function ResultScreen({
             destructive
           />
         </div>
+
+        {/* 修正を依頼（テキスト or 音声） */}
+        {reviseOpen && (
+          <div className="mt-3 rounded-card border border-border bg-surface p-4">
+            <h3 className="mb-2 text-[14px] font-semibold text-text">
+              どう直したいか教えてください
+            </h3>
+            <p className="mb-3 text-[12.5px] leading-relaxed text-text-tertiary">
+              例:「もっとカジュアルな文体にして」「ゴルフバッグの話は削って」など
+            </p>
+
+            {isRecordingRevise ? (
+              <div className="flex items-center justify-between rounded-chip border border-border bg-bg px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 animate-pulse-dot rounded-full bg-recording" />
+                  <span className="tabular text-[15px] font-semibold text-recording">
+                    {formatTimer(reviseElapsedMs)}
+                  </span>
+                </div>
+                <button
+                  onClick={onStopReviseVoice}
+                  aria-label="録音を停止"
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-recording text-white active:scale-95"
+                >
+                  <StopIcon width={18} height={18} />
+                </button>
+              </div>
+            ) : (
+              <textarea
+                value={reviseInstruction}
+                onChange={(e) => onChangeReviseInstruction(e.target.value)}
+                placeholder="修正内容を入力するか、マイクで話してください"
+                rows={3}
+                className="w-full resize-none rounded-chip border border-border bg-bg p-3 text-[14.5px] leading-relaxed text-text outline-none focus:border-accent"
+              />
+            )}
+
+            {reviseError && (
+              <p role="alert" className="mt-2 text-[13px] text-error">
+                {reviseError}
+              </p>
+            )}
+
+            <div className="mt-3 flex items-center gap-3">
+              {!isRecordingRevise && (
+                <button
+                  onClick={onStartReviseVoice}
+                  disabled={reviseBusy !== 'none'}
+                  aria-label="音声で修正を依頼"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-bg text-text active:opacity-70 disabled:opacity-50"
+                >
+                  <MicIcon width={18} height={18} />
+                </button>
+              )}
+              <button
+                onClick={onApplyRevise}
+                disabled={
+                  reviseBusy !== 'none' || reviseInstruction.trim().length === 0 || isRecordingRevise
+                }
+                className="flex h-11 flex-1 items-center justify-center rounded-full bg-accent text-[14.5px] font-bold text-accent-on active:scale-[0.99] disabled:opacity-50"
+              >
+                {reviseBusy === 'transcribing'
+                  ? '文字起こし中…'
+                  : reviseBusy === 'revising'
+                    ? '修正中…'
+                    : 'この内容で修正する'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {diary.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">

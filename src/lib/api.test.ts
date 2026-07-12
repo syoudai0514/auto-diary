@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { transcribeAudio, generateDiaryApi, updateProfileApi, login, ApiError } from './api';
+import type { Diary } from './diary';
+import { transcribeAudio, generateDiaryApi, reviseDiaryApi, updateProfileApi, login, ApiError } from './api';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -117,6 +118,49 @@ describe('APIクライアント: レート制限', () => {
     );
     const err = await generateDiaryApi('t', 'natural').catch((e) => e);
     expect(err.retryAfter).toBeUndefined();
+  });
+});
+
+const sampleDiary: Diary = {
+  title: '元のタイトル',
+  body: '元の本文',
+  facts: [],
+  feelings: [],
+  interpretations: [],
+  nextActions: [],
+  tags: [],
+  rawTranscript: '元の文字起こし',
+};
+
+describe('APIクライアント: reviseDiaryApi', () => {
+  it('transcript・currentDiary・instructionを送信し、修正後のdiaryを返す', async () => {
+    const revised = { ...sampleDiary, title: '修正後のタイトル' };
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ diary: revised }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await reviseDiaryApi('元の文字起こし', sampleDiary, 'もっと短くして', 'natural');
+    expect(result.title).toBe('修正後のタイトル');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body.transcript).toBe('元の文字起こし');
+    expect(body.currentDiary).toEqual(sampleDiary);
+    expect(body.instruction).toBe('もっと短くして');
+    expect(body.style).toBe('natural');
+  });
+
+  it('サーバーエラー時は ApiError を投げる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'revision_failed', message: '失敗' }), { status: 502 }),
+        ),
+      ),
+    );
+    const err = await reviseDiaryApi('t', sampleDiary, 'x', 'natural').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toBe('失敗');
   });
 });
 

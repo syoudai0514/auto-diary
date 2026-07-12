@@ -1,5 +1,10 @@
 import { Type, type GoogleGenAI } from '@google/genai';
-import { buildSystemPrompt, buildUserPrompt } from './prompt';
+import {
+  buildReviseSystemPrompt,
+  buildReviseUserPrompt,
+  buildSystemPrompt,
+  buildUserPrompt,
+} from './prompt';
 import { safeParseDiary, type Diary, type DiaryStyleId } from './diary';
 import { extractText } from './gemini';
 
@@ -10,6 +15,17 @@ export interface GenerateOptions {
   /** JSON パース失敗時の最大リトライ回数。 */
   maxRetries?: number;
   /** 「自分は父です。妻はママと呼ぶ」など、話者・登場人物を判断するための補足情報（任意）。 */
+  peopleContext?: string;
+}
+
+export interface ReviseOptions {
+  transcript: string;
+  currentDiary: Diary;
+  /** ユーザーからの修正依頼（テキストまたは音声の文字起こし）。 */
+  instruction: string;
+  style: DiaryStyleId;
+  model: string;
+  maxRetries?: number;
   peopleContext?: string;
 }
 
@@ -79,17 +95,17 @@ export const DIARY_RESPONSE_SCHEMA = {
 } as const;
 
 /**
- * 文字起こしから構造化日記を生成する。
- * Gemini の structured output(responseSchema) を使い、万一パースに失敗したら再試行する。
- * ai クライアントは引数で受け取り、テストでモック可能にする。
+ * system/user プロンプトを Gemini の structured output で呼び出し、パースできるまで
+ * （最大 maxRetries 回）再試行する共通処理。generateDiary / reviseDiary で共有する。
  */
-export async function generateDiary(
+async function runStructuredDiaryCall(
   ai: GoogleGenAI,
-  { transcript, style, model, maxRetries = 2, peopleContext }: GenerateOptions,
+  model: string,
+  system: string,
+  user: string,
+  transcript: string,
+  maxRetries: number,
 ): Promise<Diary> {
-  const system = buildSystemPrompt(style, peopleContext);
-  const user = buildUserPrompt(transcript);
-
   let lastError = '';
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const contents = [
@@ -130,4 +146,31 @@ export async function generateDiary(
   }
 
   throw new DiaryGenerationError(lastError || '日記の生成に失敗しました');
+}
+
+/**
+ * 文字起こしから構造化日記を生成する。
+ * Gemini の structured output(responseSchema) を使い、万一パースに失敗したら再試行する。
+ * ai クライアントは引数で受け取り、テストでモック可能にする。
+ */
+export async function generateDiary(
+  ai: GoogleGenAI,
+  { transcript, style, model, maxRetries = 2, peopleContext }: GenerateOptions,
+): Promise<Diary> {
+  const system = buildSystemPrompt(style, peopleContext);
+  const user = buildUserPrompt(transcript);
+  return runStructuredDiaryCall(ai, model, system, user, transcript, maxRetries);
+}
+
+/**
+ * 生成済みの日記を、ユーザーからの修正依頼（テキストまたは音声）に従って書き直す。
+ * 元の文字起こしを根拠に保ちつつ、指示にない部分はできるだけ元の内容を維持する。
+ */
+export async function reviseDiary(
+  ai: GoogleGenAI,
+  { transcript, currentDiary, instruction, style, model, maxRetries = 2, peopleContext }: ReviseOptions,
+): Promise<Diary> {
+  const system = buildReviseSystemPrompt(style, peopleContext);
+  const user = buildReviseUserPrompt(transcript, currentDiary, instruction);
+  return runStructuredDiaryCall(ai, model, system, user, transcript, maxRetries);
 }
