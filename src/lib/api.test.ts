@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { Diary } from './diary';
+import { sampleAnalysis as sampleTalkAnalysis } from '@/test/fixtures/talkAnalysis';
 import {
   transcribeAudio,
   generateDiaryApi,
   reviseDiaryApi,
   updateProfileApi,
+  transcribeTalkAudio,
+  analyzeTalkApi,
   login,
   signup,
   getGeminiKeyStatus,
@@ -298,5 +301,53 @@ describe('APIクライアント: Gemini APIキーの登録状況', () => {
     const err = await saveGeminiKey('x').catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe('invalid_key');
+  });
+});
+
+describe('APIクライアント: 話し合い分析', () => {
+  it('analyzeTalkApi は話者名を送信し、検証済みの分析結果を返す', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ analysis: sampleTalkAnalysis }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await analyzeTalkApi('A: こんにちは\nB: やあ', '私', '妻');
+    expect(result.verdict.leansToward).toBe('B');
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.speakerA).toBe('私');
+    expect(body.speakerB).toBe('妻');
+    expect(body.transcript).toBe('A: こんにちは\nB: やあ');
+  });
+
+  it('analysis が壊れた応答は invalid_response エラーになる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ analysis: { title: 'だけ' } }), { status: 200 })),
+      ),
+    );
+    const err = await analyzeTalkApi('t', 'A', 'B').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_response');
+  });
+
+  it('transcribeTalkAudio はテキストを返し、サーバーエラー時は ApiError を投げる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ text: 'A: おはよう' }), { status: 200 }))),
+    );
+    const blob = new Blob(['x'], { type: 'audio/webm' });
+    expect(await transcribeTalkAudio(blob, 'talk.webm')).toBe('A: おはよう');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'transcription_failed', message: '失敗' }), { status: 502 }),
+        ),
+      ),
+    );
+    const err = await transcribeTalkAudio(blob, 'talk.webm').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.message).toBe('失敗');
   });
 });

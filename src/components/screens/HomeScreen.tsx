@@ -9,6 +9,7 @@ import {
   MicIcon,
   SettingsIcon,
   UploadIcon,
+  UsersIcon,
 } from '@/components/icons';
 
 export function HomeScreen({
@@ -17,6 +18,7 @@ export function HomeScreen({
   onRecord,
   onQuick,
   onPickFiles,
+  onOpenTalk,
   onResume,
   onDiscard,
 }: {
@@ -25,6 +27,7 @@ export function HomeScreen({
   onRecord: () => void;
   onQuick: () => void;
   onPickFiles: () => void;
+  onOpenTalk: () => void;
   onResume: (d: Draft) => void;
   onDiscard: (id: string) => void;
 }) {
@@ -98,6 +101,13 @@ export function HomeScreen({
           >
             <UploadIcon width={18} height={18} />
             音声ファイルをアップロード
+          </button>
+          <button
+            onClick={onOpenTalk}
+            className="flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-5 text-[14px] font-medium text-text active:opacity-70"
+          >
+            <UsersIcon width={18} height={18} />
+            ふたりの話し合いを分析
           </button>
           <button
             onClick={onRecord}

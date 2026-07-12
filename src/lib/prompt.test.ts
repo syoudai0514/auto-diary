@@ -7,6 +7,9 @@ import {
   buildProfileUpdateUserPrompt,
   buildReviseSystemPrompt,
   buildReviseUserPrompt,
+  buildTalkTranscribePrompt,
+  buildTalkAnalysisSystemPrompt,
+  buildTalkAnalysisUserPrompt,
 } from './prompt';
 
 describe('buildSystemPrompt', () => {
@@ -129,5 +132,51 @@ describe('buildReviseUserPrompt', () => {
   it('修正依頼の前後の空白はトリムされる', () => {
     const p = buildReviseUserPrompt('t', sampleDiary, '  短くして  ');
     expect(p).toContain('----- 修正依頼ここから -----\n短くして\n----- 修正依頼ここまで -----');
+  });
+});
+
+describe('buildTalkTranscribePrompt', () => {
+  it('話者分離と正確な書き起こしを指示する', () => {
+    const p = buildTalkTranscribePrompt();
+    expect(p).toContain('A: ');
+    expect(p).toContain('B: ');
+    expect(p).toContain('推測で補わない');
+    expect(p).toContain('最初に発言した人物をA');
+  });
+});
+
+describe('buildTalkAnalysisSystemPrompt', () => {
+  it('率直な判定と行動単位の評価・安全配慮を含む', () => {
+    const p = buildTalkAnalysisSystemPrompt();
+    expect(p).toContain('率直');
+    expect(p).toContain('「どちらも悪い」で濁さない');
+    expect(p).toContain('人格・性格を断定しない');
+    expect(p).toContain('暴力・脅迫');
+    expect(p).toContain('safetyNote');
+  });
+
+  it('peopleContext を渡すと補足情報セクションが入る', () => {
+    const p = buildTalkAnalysisSystemPrompt('私は父です。');
+    expect(p).toContain('私は父です。');
+  });
+
+  it('peopleContext 未指定なら補足情報セクションは入らない', () => {
+    const p = buildTalkAnalysisSystemPrompt();
+    expect(p).not.toContain('書き手・登場人物についての補足情報');
+  });
+});
+
+describe('buildTalkAnalysisUserPrompt', () => {
+  it('話者名と文字起こしを含む', () => {
+    const p = buildTalkAnalysisUserPrompt('A: おはよう\nB: おはよう', '私', '妻');
+    expect(p).toContain('話者Aは「私」');
+    expect(p).toContain('話者Bは「妻」');
+    expect(p).toContain('A: おはよう');
+  });
+
+  it('話者名の前後の空白はトリムされる', () => {
+    const p = buildTalkAnalysisUserPrompt('t', '  私  ', ' 夫 ');
+    expect(p).toContain('話者Aは「私」');
+    expect(p).toContain('話者Bは「夫」');
   });
 });

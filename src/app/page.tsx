@@ -583,6 +583,7 @@ export default function AppPage() {
             setScreen('quick');
           }}
           onPickFiles={triggerFilePicker}
+          onOpenTalk={() => router.push('/analyze')}
           onResume={resumeDraft}
           onDiscard={discardDraft}
         />

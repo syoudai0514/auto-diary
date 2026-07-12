@@ -1,6 +1,7 @@
 'use client';
 
 import { DiarySchema, type Diary, type DiaryStyleId } from './diary';
+import { TalkAnalysisSchema, type TalkAnalysis } from './talk';
 
 export class ApiError extends Error {
   status: number;
@@ -189,6 +190,54 @@ export async function updateProfileApi(
   );
   const data = await res.json();
   return typeof data.markdown === 'string' ? data.markdown : '';
+}
+
+/**
+ * ふたりの話し合い音声を、話者ラベル（A:/B:）付きで文字起こしする。
+ */
+export async function transcribeTalkAudio(
+  blob: Blob,
+  filename: string,
+  timeoutMs = 180000,
+): Promise<string> {
+  const form = new FormData();
+  form.append('file', blob, filename);
+  let res: Response;
+  try {
+    res = await fetchWithTimeout('/api/talk/transcribe', { method: 'POST', body: form }, timeoutMs);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(408, 'timeout', '文字起こしがタイムアウトしました。');
+    }
+    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
+  }
+  if (!res.ok) throw await parseError(res);
+  const data = await res.json();
+  return data.text ?? '';
+}
+
+/**
+ * 話者付き文字起こしから、ふたりの話し合いの構造化分析を取得する。
+ */
+export async function analyzeTalkApi(
+  transcript: string,
+  speakerA: string,
+  speakerB: string,
+  peopleContext?: string,
+  timeoutMs = AI_REQUEST_TIMEOUT_MS,
+): Promise<TalkAnalysis> {
+  const res = await postJson(
+    '/api/talk/analyze',
+    { transcript, speakerA, speakerB, peopleContext },
+    timeoutMs,
+    '話し合いの分析がタイムアウトしました。',
+  );
+  const data = await res.json();
+  const parsed = TalkAnalysisSchema.safeParse((data as { analysis?: unknown })?.analysis);
+  if (!parsed.success) {
+    throw new ApiError(500, 'invalid_response', 'サーバーからの応答が不正でした。');
+  }
+  return parsed.data;
 }
 
 /** 自分のGemini APIキーが登録済みかどうかを取得する（キー自体は返らない）。 */
