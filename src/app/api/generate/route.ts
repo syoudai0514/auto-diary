@@ -69,10 +69,31 @@ export async function POST(req: Request) {
         { status: 502 },
       );
     }
-    console.error('[generate] failed:', err instanceof Error ? err.name : 'UnknownError');
+    const status = statusFromError(err);
+    const reason = errReason(err);
+    console.error('[generate] failed:', status, reason || (err instanceof Error ? err.name : 'UnknownError'));
     return NextResponse.json(
-      { error: 'generation_failed', message: '日記の生成に失敗しました。' },
-      { status: 502 },
+      {
+        error: 'generation_failed',
+        message: reason ? `日記の生成に失敗しました（${reason}）` : '日記の生成に失敗しました。',
+      },
+      { status },
     );
   }
+}
+
+function statusFromError(err: unknown): number {
+  if (err && typeof err === 'object' && 'status' in err) {
+    const s = Number((err as { status?: unknown }).status);
+    if (Number.isFinite(s) && s >= 400 && s < 600) return s;
+  }
+  return 502;
+}
+
+/** Gemini SDK のエラーメッセージ（API側の失敗理由。ユーザーの文字起こし本文は含まれない）。 */
+function errReason(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    return String((err as Error).message).slice(0, 300);
+  }
+  return '';
 }

@@ -87,11 +87,15 @@ export async function POST(req: Request) {
     const text = extractText(response).trim();
     return NextResponse.json({ text });
   } catch (err: unknown) {
-    // 本文・音声は出さず、種類だけを記録する
-    console.error('[transcribe] failed:', errName(err));
+    // 本文・音声は出さず、種類・ステータス・APIからの理由のみを記録する（原因調査用）
     const status = statusFromError(err);
+    const reason = errReason(err);
+    console.error('[transcribe] failed:', status, reason || errName(err));
     return NextResponse.json(
-      { error: 'transcription_failed', message: '文字起こしに失敗しました。' },
+      {
+        error: 'transcription_failed',
+        message: reason ? `文字起こしに失敗しました（${reason}）` : '文字起こしに失敗しました。',
+      },
       { status },
     );
   }
@@ -100,6 +104,14 @@ export async function POST(req: Request) {
 function errName(err: unknown): string {
   if (err && typeof err === 'object' && 'name' in err) return String((err as Error).name);
   return 'UnknownError';
+}
+
+/** Gemini SDK のエラーメッセージ（API側の失敗理由。ユーザーの音声/本文は含まれない）。 */
+function errReason(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    return String((err as Error).message).slice(0, 300);
+  }
+  return '';
 }
 
 function statusFromError(err: unknown): number {

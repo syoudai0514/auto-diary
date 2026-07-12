@@ -196,13 +196,18 @@ export default function AppPage() {
     setScreen('home');
   }
 
-  /** 429（レート制限）のときは Retry-After ぶん待って1回だけ再試行する。 */
+  /**
+   * 429（レート制限）のときは少し待って1回だけ再試行する。
+   * Retry-After ヘッダーがあればそれに従い、無ければ既定20秒待つ
+   * （Gemini側のレート制限はヘッダーを返さないことがあるため）。
+   */
   async function transcribeWithRetry(file: File): Promise<string> {
     try {
       return await transcribeAudio(file, file.name || 'audio');
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429 && err.retryAfter) {
-        const waitMs = Math.min(err.retryAfter, 30) * 1000;
+      if (err instanceof ApiError && err.status === 429) {
+        const waitSec = err.retryAfter ?? 20;
+        const waitMs = Math.min(waitSec, 30) * 1000;
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         return transcribeAudio(file, file.name || 'audio');
       }
