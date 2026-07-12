@@ -195,22 +195,32 @@ export default function AppPage() {
   }
 
   /**
-   * 429（レート制限）のときは少し待って1回だけ再試行する。
+   * 429（レート制限）のときは少し待って再試行する。
    * Retry-After ヘッダーがあればそれに従い、無ければ既定20秒待つ
    * （Gemini側のレート制限はヘッダーを返さないことがあるため）。
+   * Geminiの無料枠は1分あたりのリクエスト数が少なく、続けて操作すると
+   * 1回の再試行では間に合わないことがあるため、最大2回まで再試行する。
    */
-  async function transcribeWithRetry(blob: Blob, filename: string): Promise<string> {
-    try {
-      return await transcribeAudio(blob, filename);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
-        const waitSec = err.retryAfter ?? 20;
-        const waitMs = Math.min(waitSec, 30) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
-        return transcribeAudio(blob, filename);
+  async function withRetryOn429<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 429 && attempt < maxRetries) {
+          attempt++;
+          const waitSec = err.retryAfter ?? 20;
+          const waitMs = Math.min(waitSec, 30) * 1000;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
+  }
+
+  function transcribeWithRetry(blob: Blob, filename: string): Promise<string> {
+    return withRetryOn429(() => transcribeAudio(blob, filename));
   }
 
   /**
@@ -288,7 +298,9 @@ export default function AppPage() {
   async function runGenerate(text: string) {
     setScreen('generating');
     try {
-      const result = await generateDiaryApi(text, settings.style, profileMarkdown || undefined);
+      const result = await withRetryOn429(() =>
+        generateDiaryApi(text, settings.style, profileMarkdown || undefined),
+      );
       setDiary(result);
       const id = draftId ?? newDraftId();
       setDraftId(id);
@@ -393,12 +405,8 @@ export default function AppPage() {
     setReviseBusy('revising');
     setReviseError('');
     try {
-      const updated = await reviseDiaryApi(
-        transcript,
-        diary,
-        instruction,
-        settings.style,
-        profileMarkdown || undefined,
+      const updated = await withRetryOn429(() =>
+        reviseDiaryApi(transcript, diary, instruction, settings.style, profileMarkdown || undefined),
       );
       setDiary(updated);
       if (draftId) await persistDraft(draftId, updated);
