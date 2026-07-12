@@ -110,6 +110,35 @@ export async function chunkAudioIfNeeded(
 }
 
 /**
+ * 1リクエストあたりの音声送信上限。サーバー側の既定値(4MB、Vercelのプラットフォーム
+ * 上限約4.5MBに配慮した値)より小さくしている。1チャンクを小さく保つほど
+ * アップロード・文字起こしが速く終わり、タイムアウトしにくくなるため。
+ * （約2.5MB ≒ 16kHzモノラルで約80秒ぶんの音声）
+ */
+export const MAX_CLIENT_AUDIO_BYTES = 2.5 * 1024 * 1024;
+
+/**
+ * 上限を超える音声を、自己完結したWAVチャンク（ファイル名付き）に分割する。
+ * 上限以下ならそのまま1件で返す。
+ */
+export async function expandToChunks(
+  blob: Blob,
+  baseName: string,
+  maxBytes: number = MAX_CLIENT_AUDIO_BYTES,
+  decodeAudio: (arrayBuffer: ArrayBuffer) => Promise<DecodableAudioBuffer> = decodeAudioBuffer,
+): Promise<{ blob: Blob; filename: string }[]> {
+  if (blob.size <= maxBytes) {
+    return [{ blob, filename: baseName }];
+  }
+  const chunks = await chunkAudioIfNeeded(blob, maxBytes, decodeAudio);
+  if (chunks.length <= 1) {
+    return [{ blob: chunks[0] ?? blob, filename: baseName }];
+  }
+  const stem = baseName.replace(/\.[^.]+$/, '') || 'audio';
+  return chunks.map((c, i) => ({ blob: c, filename: `${stem}-part${i + 1}.wav` }));
+}
+
+/**
  * 音声のデコード先サンプルレート。話し声の文字起こし用途には十分な品質で、
  * 元がこれより高いサンプルレート（44.1kHz等）でも変換してデータ量を抑える
  * （decodeAudioData はデバイスの既定サンプルレートにアップサンプルすることがあり、

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTimer, formatDuration, formatDate, formatBytes, combineTranscripts } from './format';
+import { formatTimer, formatDuration, formatDate, formatBytes, combineTranscripts, sourceLabel } from './format';
 
 describe('formatTimer', () => {
   it('ミリ秒を mm:ss に変換する', () => {
@@ -54,5 +54,17 @@ describe('combineTranscripts（複数音声の文字起こし結合）', () => {
   });
   it('全て空なら空文字を返す', () => {
     expect(combineTranscripts(['', '   '])).toBe('');
+  });
+});
+
+describe('sourceLabel', () => {
+  it('ファイル入力なら件数を表示する', () => {
+    expect(sourceLabel('files', 0, 3)).toBe('音声ファイル3件から作成');
+  });
+  it('録音なら録音時間を表示する', () => {
+    expect(sourceLabel('record', 90, 0)).toBe('録音時間 1分30秒');
+  });
+  it('録音時間が無ければ手入力', () => {
+    expect(sourceLabel('quick', 0, 0)).toBe('手入力');
   });
 });

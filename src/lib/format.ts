@@ -38,3 +38,14 @@ export function combineTranscripts(parts: string[]): string {
     .filter((p) => p.length > 0)
     .join('\n\n');
 }
+
+/** 結果画面ヘッダーに出す入力元ラベル（録音時間 / 手入力 / 音声ファイルN件）。 */
+export function sourceLabel(
+  mode: 'record' | 'quick' | 'files',
+  durationSec: number,
+  fileCount: number,
+): string {
+  if (mode === 'files') return `音声ファイル${fileCount}件から作成`;
+  if (durationSec > 0) return `録音時間 ${formatDuration(durationSec)}`;
+  return '手入力';
+}

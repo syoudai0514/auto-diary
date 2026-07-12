@@ -7,6 +7,7 @@ import {
   chunkRanges,
   encodeWav,
   chunkAudioIfNeeded,
+  expandToChunks,
   type DecodableAudioBuffer,
 } from './audioChunk';
 
@@ -155,5 +156,36 @@ describe('chunkAudioIfNeeded', () => {
     for (const c of chunks) {
       expect((c.size - 44) % 4).toBe(0);
     }
+  });
+});
+
+describe('expandToChunks（ファイル名付きの分割）', () => {
+  it('上限以下ならファイル名を保ったまま1件で返す', async () => {
+    const blob = new Blob([new Uint8Array(100)], { type: 'audio/webm' });
+    const decode = async () => {
+      throw new Error('デコードは呼ばれないはず');
+    };
+    const items = await expandToChunks(blob, 'voice.webm', 1000, decode);
+    expect(items).toEqual([{ blob, filename: 'voice.webm' }]);
+  });
+
+  it('分割された各チャンクに -partN.wav の連番ファイル名が付く', async () => {
+    const blob = new Blob([new Uint8Array(2000)], { type: 'audio/m4a' });
+    const samples = new Float32Array(80000);
+    const decode = async () => fakeAudioBuffer({ sampleRate: 16000, channels: [samples] });
+
+    // maxBytes=1000 で強制的に分割させる（targetChunkBytes は maxBytes と同値）
+    const items = await expandToChunks(blob, '家庭記録.m4a', 1000, decode);
+    expect(items.length).toBeGreaterThan(1);
+    expect(items[0].filename).toBe('家庭記録-part1.wav');
+    expect(items[1].filename).toBe('家庭記録-part2.wav');
+  });
+
+  it('拡張子の無いファイル名でも安全に連番を付ける', async () => {
+    const blob = new Blob([new Uint8Array(2000)]);
+    const samples = new Float32Array(80000);
+    const decode = async () => fakeAudioBuffer({ sampleRate: 16000, channels: [samples] });
+    const items = await expandToChunks(blob, 'audio', 1000, decode);
+    expect(items[0].filename).toBe('audio-part1.wav');
   });
 });
