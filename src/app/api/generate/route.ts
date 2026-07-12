@@ -10,6 +10,8 @@ export const maxDuration = 60;
 
 /** 文字起こしテキストの最大長（入力サイズ制限）。 */
 const MAX_TRANSCRIPT_CHARS = 20000;
+/** peopleContext（登場人物の補足情報）の最大長。 */
+const MAX_PEOPLE_CONTEXT_CHARS = 1000;
 
 /**
  * 文字起こしテキストから構造化日記を生成して返す。
@@ -31,10 +33,12 @@ export async function POST(req: Request) {
 
   let transcript: unknown;
   let style: unknown;
+  let peopleContext: unknown;
   try {
     const body = await req.json();
     transcript = body?.transcript;
     style = body?.style;
+    peopleContext = body?.peopleContext;
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
@@ -51,6 +55,15 @@ export async function POST(req: Request) {
       { status: 413 },
     );
   }
+  if (typeof peopleContext === 'string' && peopleContext.length > MAX_PEOPLE_CONTEXT_CHARS) {
+    return NextResponse.json(
+      {
+        error: 'people_context_too_long',
+        message: `登場人物の補足情報が長すぎます（上限 ${MAX_PEOPLE_CONTEXT_CHARS} 文字）。`,
+      },
+      { status: 413 },
+    );
+  }
 
   const styleId = isDiaryStyleId(style) ? style : DEFAULT_STYLE;
 
@@ -59,6 +72,7 @@ export async function POST(req: Request) {
       transcript,
       style: styleId,
       model: chatModel(),
+      peopleContext: typeof peopleContext === 'string' ? peopleContext : undefined,
     });
     return NextResponse.json({ diary });
   } catch (err: unknown) {

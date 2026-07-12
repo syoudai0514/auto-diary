@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Diary } from '@/lib/diary';
-import { DEFAULT_STYLE } from '@/lib/diary';
 import { ApiError, generateDiaryApi, transcribeAudio } from '@/lib/api';
 import { extForMime, useRecorder } from '@/hooks/useRecorder';
-import { loadSettings, type Settings } from '@/lib/settings';
+import { DEFAULT_SETTINGS, loadSettings, type Settings } from '@/lib/settings';
 import {
   Draft,
   deleteDraft,
@@ -70,11 +69,7 @@ export default function AppPage() {
   const recorder = useRecorder();
 
   const [screen, setScreen] = useState<Screen>('home');
-  const [settings, setSettings] = useState<Settings>(() => ({
-    style: DEFAULT_STYLE,
-    saveTarget: 'ask',
-    dayoneJournal: '',
-  }));
+  const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS }));
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [diary, setDiary] = useState<Diary | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -248,7 +243,7 @@ export default function AppPage() {
   async function runGenerate(text: string) {
     setScreen('generating');
     try {
-      const result = await generateDiaryApi(text, settings.style);
+      const result = await generateDiaryApi(text, settings.style, settings.peopleContext || undefined);
       setDiary(result);
       const id = draftId ?? newDraftId();
       setDraftId(id);

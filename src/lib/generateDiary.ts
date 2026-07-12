@@ -9,6 +9,8 @@ export interface GenerateOptions {
   model: string;
   /** JSON パース失敗時の最大リトライ回数。 */
   maxRetries?: number;
+  /** 「自分は父です。妻はママと呼ぶ」など、話者・登場人物を判断するための補足情報（任意）。 */
+  peopleContext?: string;
 }
 
 export class DiaryGenerationError extends Error {
@@ -83,9 +85,9 @@ export const DIARY_RESPONSE_SCHEMA = {
  */
 export async function generateDiary(
   ai: GoogleGenAI,
-  { transcript, style, model, maxRetries = 2 }: GenerateOptions,
+  { transcript, style, model, maxRetries = 2, peopleContext }: GenerateOptions,
 ): Promise<Diary> {
-  const system = buildSystemPrompt(style);
+  const system = buildSystemPrompt(style, peopleContext);
   const user = buildUserPrompt(transcript);
 
   let lastError = '';

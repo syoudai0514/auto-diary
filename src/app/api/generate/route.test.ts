@@ -14,7 +14,7 @@ vi.mock('next/headers', () => ({
 const generateContent = vi.fn();
 vi.mock('@/lib/gemini', () => ({
   getGemini: () => ({ models: { generateContent } }),
-  chatModel: () => 'gemini-2.0-flash',
+  chatModel: () => 'gemini-3.1-flash-lite',
   extractText: (r: { text?: string }) => (typeof r.text === 'string' ? r.text : ''),
 }));
 
@@ -85,5 +85,31 @@ describe('POST /api/generate', () => {
     generateContent.mockResolvedValue({ text: '壊れた出力' });
     const res = await POST(req({ transcript: '歩いた', style: 'natural' }));
     expect(res.status).toBe(502);
+  });
+});
+
+describe('POST /api/generate: peopleContext（登場人物の補足情報）', () => {
+  it('peopleContext がシステムプロンプトに渡る', async () => {
+    const ctx = '私は父です。妻はママと呼びます。';
+    const res = await POST(req({ transcript: '歩いた', style: 'natural', peopleContext: ctx }));
+    expect(res.status).toBe(200);
+    const call = generateContent.mock.calls[0][0];
+    expect(call.config.systemInstruction).toContain(ctx);
+  });
+
+  it('peopleContext 未指定でも正常に動作する', async () => {
+    const res = await POST(req({ transcript: '歩いた', style: 'natural' }));
+    expect(res.status).toBe(200);
+    const call = generateContent.mock.calls[0][0];
+    expect(call.config.systemInstruction).not.toContain('書き手・登場人物についての補足情報');
+  });
+
+  it('peopleContext が長すぎる場合は 413', async () => {
+    const res = await POST(
+      req({ transcript: '歩いた', style: 'natural', peopleContext: 'あ'.repeat(1001) }),
+    );
+    expect(res.status).toBe(413);
+    const data = await res.json();
+    expect(data.error).toBe('people_context_too_long');
   });
 });

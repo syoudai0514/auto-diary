@@ -17,8 +17,11 @@ const STYLE_GUIDE: Record<DiaryStyleId, string> = {
 /**
  * 日記生成のシステムプロンプト。
  * 事実の捏造禁止・一人称・過剰な美化の禁止など、要求されたルールを明示する。
+ * peopleContext: ユーザーが設定した「自分の立場・家族構成」などの補足情報（任意）。
+ *   録音に複数人の会話が含まれる場合などに、誰が一人称（話者本人）で、
+ *   周囲の人物をどう呼ぶか（妻/ママ、長男 など）を判断する手がかりにする。
  */
-export function buildSystemPrompt(style: DiaryStyleId): string {
+export function buildSystemPrompt(style: DiaryStyleId, peopleContext?: string): string {
   return [
     'あなたは、ユーザーが話した内容を丁寧に日記へまとめる編集アシスタントです。',
     '以下のルールを厳格に守ってください。',
@@ -41,6 +44,18 @@ export function buildSystemPrompt(style: DiaryStyleId): string {
     '',
     '# タグ',
     '- 内容から自然に導ける範囲で1〜4個のタグを付ける（例: 家族, 仕事, 健康, 学び）。無理に増やさない。',
+    ...(peopleContext?.trim()
+      ? [
+          '',
+          '# 書き手・登場人物についての補足情報（本人からの入力）',
+          '以下は日記を書いている本人が事前に登録した情報です。文字起こしの中で誰が一人称（本人）の発言かを',
+          '判断する手がかりとし、登場人物はここで指定された呼び方（例: 妻, ママ, 長男 など）で表現してください。',
+          'ここに書かれていない人物を勝手に作り出したり、書かれた関係性と矛盾する記述をしたりしないでください。',
+          '----- 補足情報ここから -----',
+          peopleContext.trim(),
+          '----- 補足情報ここまで -----',
+        ]
+      : []),
   ].join('\n');
 }
 

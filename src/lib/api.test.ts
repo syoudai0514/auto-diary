@@ -46,11 +46,35 @@ describe('APIクライアント: 通信エラー', () => {
   });
 });
 
+describe('APIクライアント: peopleContext（登場人物の補足情報）', () => {
+  it('指定した peopleContext をリクエストボディに含めて送信する', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ diary: { title: 't', body: 'b' } }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await generateDiaryApi('t', 'natural', '私は父です。妻はママと呼びます。');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body.peopleContext).toBe('私は父です。妻はママと呼びます。');
+  });
+
+  it('未指定なら peopleContext は undefined のまま送信される', async () => {
+    const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ diary: { title: 't', body: 'b' } }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await generateDiaryApi('t', 'natural');
+    const call = fetchMock.mock.calls[0];
+    const body = JSON.parse((call[1] as RequestInit).body as string);
+    expect(body.peopleContext).toBeUndefined();
+  });
+});
+
 describe('APIクライアント: タイムアウト', () => {
   it('generate がタイムアウトすると 408 timeout', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', abortableFetch());
-    const p = generateDiaryApi('t', 'natural', 50);
+    const p = generateDiaryApi('t', 'natural', undefined, 50);
     const expectation = expect(p).rejects.toMatchObject({ code: 'timeout', status: 408 });
     await vi.advanceTimersByTimeAsync(60);
     await expectation;

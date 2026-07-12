@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { DIARY_STYLES } from '@/lib/diary';
 import {
   DEFAULT_SETTINGS,
+  MAX_PEOPLE_CONTEXT_CHARS,
   loadSettings,
   saveSettings,
   type SaveTarget,
@@ -104,6 +105,25 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="mt-7">
+        <h2 className="mb-2 px-1 text-[13px] font-semibold text-text-secondary">
+          自分について・登場人物（任意）
+        </h2>
+        <textarea
+          value={settings.peopleContext}
+          onChange={(e) => update({ peopleContext: e.target.value.slice(0, MAX_PEOPLE_CONTEXT_CHARS) })}
+          placeholder={
+            '例: 私は4人家族の父です。妻はママ、子どもは長男・長女と呼びます。'
+          }
+          rows={4}
+          className="w-full resize-none rounded-card border border-border bg-surface p-4 text-[15px] leading-relaxed outline-none focus:border-accent"
+        />
+        <p className="mt-1.5 px-1 text-[12px] text-text-tertiary">
+          複数人の会話が録音に含まれる場合など、「誰が自分（一人称）で、周りの人をどう呼ぶか」をAIが判断する手がかりになります。
+          {settings.peopleContext.length}/{MAX_PEOPLE_CONTEXT_CHARS}文字
+        </p>
       </section>
 
       <section className="mt-7">

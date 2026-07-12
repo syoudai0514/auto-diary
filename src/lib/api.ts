@@ -84,6 +84,7 @@ export async function transcribeAudio(
 export async function generateDiaryApi(
   transcript: string,
   style: DiaryStyleId,
+  peopleContext?: string,
   timeoutMs = 60000,
 ): Promise<Diary> {
   let res: Response;
@@ -93,7 +94,7 @@ export async function generateDiaryApi(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript, style }),
+        body: JSON.stringify({ transcript, style, peopleContext }),
       },
       timeoutMs,
     );
