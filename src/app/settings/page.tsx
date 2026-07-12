@@ -6,7 +6,7 @@ import { DIARY_STYLES } from '@/lib/diary';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type SaveTarget, type Settings } from '@/lib/settings';
 import { loadTheme, saveTheme, type Theme } from '@/lib/theme';
 import { logout, getGeminiKeyStatus, saveGeminiKey, ApiError } from '@/lib/api';
-import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/icons';
 
 const SAVE_TARGETS: { id: SaveTarget; label: string }[] = [
   { id: 'apple', label: 'Appleジャーナル' },
@@ -33,6 +33,8 @@ export default function SettingsPage() {
   const [geminiKeyBusy, setGeminiKeyBusy] = useState(false);
   const [geminiKeyError, setGeminiKeyError] = useState('');
   const [geminiKeySaved, setGeminiKeySaved] = useState(false);
+
+  const [appleInstructionsOpen, setAppleInstructionsOpen] = useState(false);
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -115,9 +117,68 @@ export default function SettingsPage() {
       </section>
 
       <section className="mt-7">
+        <h2 className="mb-2 px-1 text-[13px] font-semibold text-text-secondary">Appleジャーナル連携</h2>
+        <div className="rounded-card border border-border bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[15px] font-medium">有効にする</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-text-tertiary">
+                iPhone側で一度だけショートカットの準備が必要です。準備前に有効にすると、保存時にiOSの分かりにくいエラーが出ます。
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={settings.appleJournalEnabled}
+              aria-label="Appleジャーナル連携を有効にする"
+              onClick={() => update({ appleJournalEnabled: !settings.appleJournalEnabled })}
+              className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                settings.appleJournalEnabled ? 'bg-accent' : 'bg-border'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                  settings.appleJournalEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          <button
+            onClick={() => setAppleInstructionsOpen((v) => !v)}
+            className="mt-3 flex w-full items-center justify-between text-[13px] font-medium text-accent"
+          >
+            <span>準備の手順を見る</span>
+            <ChevronDownIcon
+              width={16}
+              height={16}
+              className="transition-transform duration-200"
+              style={{ transform: appleInstructionsOpen ? 'rotate(180deg)' : 'none' }}
+            />
+          </button>
+
+          {appleInstructionsOpen && (
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[12.5px] leading-relaxed text-text-secondary">
+              <li>iPhoneの「ショートカット」アプリを開く（青いアイコン）</li>
+              <li>右上の＋をタップして新しいショートカットを作る</li>
+              <li>
+                名前を <code className="rounded bg-bg px-1">音声日記を保存</code>{' '}
+                にする（このアプリと完全に同じ文字にすること）
+              </li>
+              <li>「アクションを追加」→「ショートカットの入力」→「ショートカットの入力を受け取る」を追加（受け取る内容にテキストを含める）</li>
+              <li>「アクションを追加」→「辞書」→「入力から辞書を取得」を追加（入力は上で受け取ったもの）</li>
+              <li>「アクションを追加」→「辞書の値」→「辞書の値を取得」を追加し、キーに title（名前は「タイトル」に）</li>
+              <li>もう一つ「辞書の値を取得」を追加し、キーに body（名前は「本文」に）</li>
+              <li>「アクションを追加」→「ジャーナル」→「ジャーナル項目を作成」を追加し、本文に「本文」、タイトルに「タイトル」を入れる</li>
+              <li>右上の「完了」で保存すれば準備完了。この後、上のスイッチをオンにしてください</li>
+            </ol>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-7">
         <h2 className="mb-2 px-1 text-[13px] font-semibold text-text-secondary">標準の保存先</h2>
         <div className="overflow-hidden rounded-card border border-border bg-surface">
-          {SAVE_TARGETS.map((t, i) => (
+          {SAVE_TARGETS.filter((t) => t.id !== 'apple' || settings.appleJournalEnabled).map((t, i) => (
             <button
               key={t.id}
               onClick={() => update({ saveTarget: t.id })}

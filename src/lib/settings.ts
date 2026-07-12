@@ -14,6 +14,13 @@ export interface Settings {
   style: DiaryStyleId;
   saveTarget: SaveTarget;
   dayoneJournal: string;
+  /**
+   * Appleジャーナル保存には、端末側で一度だけiOSショートカット「音声日記を保存」を
+   * 作っておく必要がある（Apple側にJournalの公開APIが無いため）。未設定のまま
+   * 保存を試みると分かりにくいiOSのエラーになるため、既定では無効にしておき、
+   * 設定画面で手順を確認したうえで明示的に有効化してもらう。
+   */
+  appleJournalEnabled: boolean;
 }
 
 const KEY = 'voice-diary-settings';
@@ -22,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   style: DEFAULT_STYLE,
   saveTarget: 'ask',
   dayoneJournal: '',
+  appleJournalEnabled: false,
 };
 
 export function loadSettings(): Settings {
@@ -35,6 +43,10 @@ export function loadSettings(): Settings {
       saveTarget: isSaveTarget(parsed.saveTarget) ? parsed.saveTarget : DEFAULT_SETTINGS.saveTarget,
       dayoneJournal:
         typeof parsed.dayoneJournal === 'string' ? parsed.dayoneJournal : DEFAULT_SETTINGS.dayoneJournal,
+      appleJournalEnabled:
+        typeof parsed.appleJournalEnabled === 'boolean'
+          ? parsed.appleJournalEnabled
+          : DEFAULT_SETTINGS.appleJournalEnabled,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

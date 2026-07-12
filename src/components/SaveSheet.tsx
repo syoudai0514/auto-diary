@@ -7,16 +7,21 @@ export type SaveChoice = 'apple' | 'dayone' | 'clipboard' | 'openApp';
 /** 「毎回選ぶ」設定時に保存先を選ぶボトムシート。 */
 export function SaveSheet({
   open,
+  appleJournalEnabled,
   onSelect,
   onClose,
 }: {
   open: boolean;
+  /** 設定でAppleジャーナル連携を有効にしていない場合、選択肢から外す（未設定のショートカットで分かりにくいエラーになるのを防ぐ）。 */
+  appleJournalEnabled: boolean;
   onSelect: (c: SaveChoice) => void;
   onClose: () => void;
 }) {
   if (!open) return null;
   const items: { id: SaveChoice; label: string; icon: React.ReactNode }[] = [
-    { id: 'apple', label: 'Appleジャーナルに保存', icon: <BookIcon width={20} height={20} /> },
+    ...(appleJournalEnabled
+      ? [{ id: 'apple' as const, label: 'Appleジャーナルに保存', icon: <BookIcon width={20} height={20} /> }]
+      : []),
     { id: 'dayone', label: 'Day Oneに保存', icon: <BookIcon width={20} height={20} /> },
     { id: 'clipboard', label: 'クリップボードにコピー', icon: <CopyIcon width={20} height={20} /> },
     {

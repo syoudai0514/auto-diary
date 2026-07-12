@@ -255,7 +255,13 @@ export default function AppPage() {
     const needsExpansion = rawItems.some((it) => it.blob.size > MAX_CLIENT_AUDIO_BYTES);
     try {
       if (needsExpansion) setIsPreparingAudio(true);
-      const expanded = await Promise.all(rawItems.map((it) => expandToChunks(it.blob, it.filename)));
+      // 複数ファイルを同時にデコード・チャンク分割すると、iPhoneでは一度に大量の
+      // メモリ（非圧縮PCM・WAVチャンク）を確保することになり不足しうるため、
+      // 1ファイルずつ逐次処理する。
+      const expanded: { blob: Blob; filename: string }[][] = [];
+      for (const it of rawItems) {
+        expanded.push(await expandToChunks(it.blob, it.filename));
+      }
       items = expanded.flat();
     } catch {
       setErrorMsg('音声の分割処理に失敗しました。この端末では対応していない可能性があります。');
@@ -508,6 +514,12 @@ export default function AppPage() {
   async function onPrimarySave() {
     switch (settings.saveTarget) {
       case 'apple':
+        // 設定で無効化されている（未設定のショートカットで分かりにくいエラーになりうる）場合は
+        // 選択し直してもらう。
+        if (!settings.appleJournalEnabled) {
+          setSaveSheetOpen(true);
+          return;
+        }
         return saveToApple();
       case 'dayone':
         return saveToDayOne();
@@ -728,6 +740,7 @@ export default function AppPage() {
           onCopyBody={copyBody}
           onCopyAll={copyAll}
           onShare={shareSheet}
+          appleJournalEnabled={settings.appleJournalEnabled}
           onSaveApple={saveToApple}
           onSaveDayOne={saveToDayOne}
           onSaveOpenApp={saveViaOpenApp}
@@ -751,6 +764,7 @@ export default function AppPage() {
       <Toast message={toast ?? ''} visible={toast !== null} />
       <SaveSheet
         open={saveSheetOpen}
+        appleJournalEnabled={settings.appleJournalEnabled}
         onSelect={onSheetSelect}
         onClose={() => setSaveSheetOpen(false)}
       />
@@ -1235,6 +1249,7 @@ function ResultScreen({
   onCopyBody,
   onCopyAll,
   onShare,
+  appleJournalEnabled,
   onSaveApple,
   onSaveDayOne,
   onSaveOpenApp,
@@ -1264,6 +1279,7 @@ function ResultScreen({
   onCopyBody: () => void;
   onCopyAll: () => void;
   onShare: () => void;
+  appleJournalEnabled: boolean;
   onSaveApple: () => void;
   onSaveDayOne: () => void;
   onSaveOpenApp: () => void;
@@ -1335,7 +1351,9 @@ function ResultScreen({
 
         {/* 二次操作: 横スクロールチップ */}
         <div className="-mx-6 mt-6 flex gap-2 overflow-x-auto px-6 pb-2">
-          <Chip icon={<BookIcon width={16} height={16} />} label="Appleジャーナル" onClick={onSaveApple} />
+          {appleJournalEnabled && (
+            <Chip icon={<BookIcon width={16} height={16} />} label="Appleジャーナル" onClick={onSaveApple} />
+          )}
           <Chip icon={<BookIcon width={16} height={16} />} label="Day One" onClick={onSaveDayOne} />
           <Chip
             icon={<ExternalLinkIcon width={16} height={16} />}

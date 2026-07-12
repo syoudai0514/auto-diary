@@ -4,6 +4,7 @@ import { Suspense, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { signup, ApiError } from '@/lib/api';
+import { safeNextPath } from '@/lib/nextPath';
 import { MicIcon } from '@/components/icons';
 
 export default function SignupPage() {
@@ -28,9 +29,8 @@ function SignupForm() {
     setBusy(true);
     try {
       await signup(username, password, inviteCode);
-      const next = params.get('next') || '/';
       // ミドルウェア再評価のため location 遷移
-      window.location.assign(next.startsWith('/') ? next : '/');
+      window.location.assign(safeNextPath(params.get('next')));
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError('試行回数が多すぎます。少し待ってからお試しください。');

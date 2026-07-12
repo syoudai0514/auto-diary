@@ -90,11 +90,17 @@ export async function transcribeAudio(
   return data.text ?? '';
 }
 
+// サーバー側の maxDuration（300秒）に合わせつつ、少し手前でクライアント側の
+// タイムアウトを発生させる。ここが短すぎると、サーバー側では正常に完了できる
+// はずの遅いリクエストがクライアント都合で失敗扱いになり、ユーザーが再試行して
+// Geminiの呼び出し回数が重複してしまう。
+const AI_REQUEST_TIMEOUT_MS = 280000;
+
 export async function generateDiaryApi(
   transcript: string,
   style: DiaryStyleId,
   peopleContext?: string,
-  timeoutMs = 90000,
+  timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<Diary> {
   let res: Response;
   try {
@@ -127,7 +133,7 @@ export async function reviseDiaryApi(
   instruction: string,
   style: DiaryStyleId,
   peopleContext?: string,
-  timeoutMs = 90000,
+  timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<Diary> {
   let res: Response;
   try {
@@ -155,7 +161,7 @@ export async function reviseDiaryApi(
 export async function updateProfileApi(
   currentMarkdown: string,
   newInput: string,
-  timeoutMs = 60000,
+  timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<string> {
   let res: Response;
   try {
