@@ -6,7 +6,8 @@ import { DEFAULT_STYLE, isDiaryStyleId } from '@/lib/diary';
 import { DiaryGenerationError, generateDiary } from '@/lib/generateDiary';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Fluid Compute有効時の上限に合わせる（Gemini応答が遅い場合の余裕を持たせる）
+export const maxDuration = 300;
 
 /** 文字起こしテキストの最大長（入力サイズ制限）。 */
 const MAX_TRANSCRIPT_CHARS = 20000;

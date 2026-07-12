@@ -5,7 +5,8 @@ import { chatModel, getGemini } from '@/lib/gemini';
 import { ProfileUpdateError, updateProfile } from '@/lib/updateProfile';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Fluid Compute有効時の上限に合わせる（Gemini応答が遅い場合の余裕を持たせる）
+export const maxDuration = 300;
 
 /** 現在のプロフィール(Markdown)の最大長。 */
 const MAX_MARKDOWN_CHARS = 8000;

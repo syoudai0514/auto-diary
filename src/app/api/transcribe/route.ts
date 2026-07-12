@@ -4,8 +4,8 @@ import { clientKey, rateLimit } from '@/lib/rateLimit';
 import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
 
 export const runtime = 'nodejs';
-// 文字起こしは時間がかかるため上限を引き上げる
-export const maxDuration = 60;
+// 文字起こしは時間がかかるため上限を引き上げる（Fluid Compute有効時の上限に合わせる）
+export const maxDuration = 300;
 
 /**
  * 一字一句を正確に書き起こすための指示。

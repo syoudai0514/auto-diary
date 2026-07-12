@@ -63,7 +63,7 @@ export async function logout(): Promise<void> {
 export async function transcribeAudio(
   blob: Blob,
   filename: string,
-  timeoutMs = 120000,
+  timeoutMs = 180000,
 ): Promise<string> {
   const form = new FormData();
   form.append('file', blob, filename);
@@ -85,7 +85,7 @@ export async function generateDiaryApi(
   transcript: string,
   style: DiaryStyleId,
   peopleContext?: string,
-  timeoutMs = 60000,
+  timeoutMs = 90000,
 ): Promise<Diary> {
   let res: Response;
   try {
