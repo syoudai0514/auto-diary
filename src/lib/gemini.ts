@@ -13,12 +13,16 @@ export function getGemini(): GoogleGenAI {
   return client;
 }
 
+// gemini-2.0-flash 系は 2026-06-01 付けで廃止されたため、既定値は
+// 無料枠が広い gemini-3.1-flash-lite にしている（環境変数で変更可）。
+const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
+
 export function chatModel(): string {
-  return process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  return process.env.GEMINI_MODEL || DEFAULT_MODEL;
 }
 
 export function transcribeModel(): string {
-  return process.env.GEMINI_TRANSCRIBE_MODEL || 'gemini-2.0-flash';
+  return process.env.GEMINI_TRANSCRIBE_MODEL || DEFAULT_MODEL;
 }
 
 /**

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { guessAudioMimeType, extractText } from './gemini';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { guessAudioMimeType, extractText, chatModel, transcribeModel } from './gemini';
 
 describe('guessAudioMimeType', () => {
   it('ブラウザが正しい type を報告していればそれを使う', () => {
@@ -35,5 +35,29 @@ describe('extractText', () => {
   it('text が undefined なら空文字を返す', () => {
     expect(extractText({})).toBe('');
     expect(extractText({ text: undefined })).toBe('');
+  });
+});
+
+describe('既定モデル（環境変数未設定時のフォールバック）', () => {
+  const savedModel = process.env.GEMINI_MODEL;
+  const savedTranscribeModel = process.env.GEMINI_TRANSCRIBE_MODEL;
+
+  beforeEach(() => {
+    delete process.env.GEMINI_MODEL;
+    delete process.env.GEMINI_TRANSCRIBE_MODEL;
+  });
+  afterEach(() => {
+    process.env.GEMINI_MODEL = savedModel;
+    process.env.GEMINI_TRANSCRIBE_MODEL = savedTranscribeModel;
+  });
+
+  it('廃止済みの gemini-2.0-flash 系を既定値に使わない', () => {
+    expect(chatModel()).not.toContain('gemini-2.0-flash');
+    expect(transcribeModel()).not.toContain('gemini-2.0-flash');
+  });
+
+  it('未設定時は gemini-3.1-flash-lite を使う', () => {
+    expect(chatModel()).toBe('gemini-3.1-flash-lite');
+    expect(transcribeModel()).toBe('gemini-3.1-flash-lite');
   });
 });

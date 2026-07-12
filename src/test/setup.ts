@@ -4,8 +4,8 @@ import { beforeEach, vi } from 'vitest';
 process.env.APP_PASSWORD = 'test-password-123';
 process.env.AUTH_SECRET = 'test-secret-value-at-least-32-characters-long';
 process.env.GEMINI_API_KEY = 'test-gemini-key';
-process.env.GEMINI_MODEL = 'gemini-2.0-flash';
-process.env.GEMINI_TRANSCRIBE_MODEL = 'gemini-2.0-flash';
+process.env.GEMINI_MODEL = 'gemini-3.1-flash-lite';
+process.env.GEMINI_TRANSCRIBE_MODEL = 'gemini-3.1-flash-lite';
 
 // jsdom には matchMedia が無いので最低限のスタブを用意
 if (typeof window !== 'undefined' && !window.matchMedia) {
