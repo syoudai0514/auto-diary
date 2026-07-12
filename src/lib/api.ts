@@ -1,6 +1,6 @@
 'use client';
 
-import type { Diary, DiaryStyleId } from './diary';
+import { DiarySchema, type Diary, type DiaryStyleId } from './diary';
 
 export class ApiError extends Error {
   status: number;
@@ -45,6 +45,50 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs
   } finally {
     clearTimeout(id);
   }
+}
+
+/**
+ * JSONボディをPOSTし、タイムアウト・ネットワーク断・エラーレスポンスを
+ * ApiError に正規化して返す共通ヘルパー。
+ */
+async function postJson(
+  path: string,
+  body: unknown,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      path,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      timeoutMs,
+    );
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(408, 'timeout', timeoutMessage);
+    }
+    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
+  }
+  if (!res.ok) throw await parseError(res);
+  return res;
+}
+
+/**
+ * サーバー応答の diary をスキーマ検証して返す。
+ * 想定外の形（デプロイずれ・途中で書き換えられた応答など）を
+ * 実行時に検知し、黙って壊れたデータを画面に流さない。
+ */
+function parseDiaryResponse(data: unknown): Diary {
+  const parsed = DiarySchema.safeParse((data as { diary?: unknown })?.diary);
+  if (!parsed.success) {
+    throw new ApiError(500, 'invalid_response', 'サーバーからの応答が不正でした。');
+  }
+  return parsed.data;
 }
 
 export async function login(username: string, password: string): Promise<void> {
@@ -102,26 +146,13 @@ export async function generateDiaryApi(
   peopleContext?: string,
   timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<Diary> {
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(
-      '/api/generate',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript, style, peopleContext }),
-      },
-      timeoutMs,
-    );
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError(408, 'timeout', '日記の生成がタイムアウトしました。');
-    }
-    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
-  }
-  if (!res.ok) throw await parseError(res);
-  const data = await res.json();
-  return data.diary as Diary;
+  const res = await postJson(
+    '/api/generate',
+    { transcript, style, peopleContext },
+    timeoutMs,
+    '日記の生成がタイムアウトしました。',
+  );
+  return parseDiaryResponse(await res.json());
 }
 
 /**
@@ -135,26 +166,13 @@ export async function reviseDiaryApi(
   peopleContext?: string,
   timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<Diary> {
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(
-      '/api/diary/revise',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript, currentDiary, instruction, style, peopleContext }),
-      },
-      timeoutMs,
-    );
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError(408, 'timeout', '日記の修正がタイムアウトしました。');
-    }
-    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
-  }
-  if (!res.ok) throw await parseError(res);
-  const data = await res.json();
-  return data.diary as Diary;
+  const res = await postJson(
+    '/api/diary/revise',
+    { transcript, currentDiary, instruction, style, peopleContext },
+    timeoutMs,
+    '日記の修正がタイムアウトしました。',
+  );
+  return parseDiaryResponse(await res.json());
 }
 
 /** 現在のプロフィール(Markdown)と新しい入力を統合し、更新後のMarkdownを取得する。 */
@@ -163,26 +181,14 @@ export async function updateProfileApi(
   newInput: string,
   timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<string> {
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(
-      '/api/profile/update',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentMarkdown, newInput }),
-      },
-      timeoutMs,
-    );
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError(408, 'timeout', 'プロフィールの更新がタイムアウトしました。');
-    }
-    throw new ApiError(0, 'network', 'ネットワークに接続できませんでした。');
-  }
-  if (!res.ok) throw await parseError(res);
+  const res = await postJson(
+    '/api/profile/update',
+    { currentMarkdown, newInput },
+    timeoutMs,
+    'プロフィールの更新がタイムアウトしました。',
+  );
   const data = await res.json();
-  return data.markdown as string;
+  return typeof data.markdown === 'string' ? data.markdown : '';
 }
 
 /** 自分のGemini APIキーが登録済みかどうかを取得する（キー自体は返らない）。 */

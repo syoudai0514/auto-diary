@@ -60,7 +60,7 @@ describe('APIクライアント: 通信エラー', () => {
 describe('APIクライアント: peopleContext（登場人物の補足情報）', () => {
   it('指定した peopleContext をリクエストボディに含めて送信する', async () => {
     const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
-      Promise.resolve(new Response(JSON.stringify({ diary: { title: 't', body: 'b' } }), { status: 200 })),
+      Promise.resolve(new Response(JSON.stringify({ diary: sampleDiary }), { status: 200 })),
     );
     vi.stubGlobal('fetch', fetchMock);
     await generateDiaryApi('t', 'natural', '私は父です。妻はママと呼びます。');
@@ -71,13 +71,39 @@ describe('APIクライアント: peopleContext（登場人物の補足情報）'
 
   it('未指定なら peopleContext は undefined のまま送信される', async () => {
     const fetchMock = vi.fn((_url: RequestInfo, _init?: RequestInit) =>
-      Promise.resolve(new Response(JSON.stringify({ diary: { title: 't', body: 'b' } }), { status: 200 })),
+      Promise.resolve(new Response(JSON.stringify({ diary: sampleDiary }), { status: 200 })),
     );
     vi.stubGlobal('fetch', fetchMock);
     await generateDiaryApi('t', 'natural');
     const call = fetchMock.mock.calls[0];
     const body = JSON.parse((call[1] as RequestInit).body as string);
     expect(body.peopleContext).toBeUndefined();
+  });
+});
+
+describe('APIクライアント: 応答のスキーマ検証', () => {
+  it('欠けたフィールドを持つ diary 応答は invalid_response エラーになる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ diary: { title: 'only-title' } }), { status: 200 }),
+        ),
+      ),
+    );
+    const err = await generateDiaryApi('t', 'natural').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_response');
+  });
+
+  it('diary が欠落した応答も invalid_response エラーになる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))),
+    );
+    const err = await reviseDiaryApi('t', sampleDiary, 'x', 'natural').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('invalid_response');
   });
 });
 

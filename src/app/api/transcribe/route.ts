@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimit } from '@/lib/rateLimit';
 import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
-import { decryptSecret } from '@/lib/crypto';
-import { getUserById } from '@/lib/userStore';
+import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 
 export const runtime = 'nodejs';
 // 文字起こしは時間がかかるため上限を引き上げる（Fluid Compute有効時の上限に合わせる）
@@ -68,22 +67,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = await getUserById(userId);
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!user.geminiKeyEncrypted) {
-    return NextResponse.json(
-      { error: 'no_api_key', message: 'Gemini APIキーが未設定です。設定画面から登録してください。' },
-      { status: 400 },
-    );
-  }
+  const keyResult = await resolveGeminiApiKey(userId);
+  if (keyResult instanceof NextResponse) return keyResult;
 
   try {
     const arrayBuffer = await file.arrayBuffer();
     const base64 = Buffer.from(arrayBuffer).toString('base64');
     const mimeType = guessAudioMimeType(file.name, file.type);
 
-    const apiKey = decryptSecret(user.geminiKeyEncrypted);
-    const ai = getGemini(apiKey);
+    const ai = getGemini(keyResult.apiKey);
     const response = await ai.models.generateContent({
       model: transcribeModel(),
       contents: [
@@ -100,37 +92,9 @@ export async function POST(req: Request) {
     const text = extractText(response).trim();
     return NextResponse.json({ text });
   } catch (err: unknown) {
-    // 本文・音声は出さず、種類・ステータス・APIからの理由のみを記録する（原因調査用）
-    const status = statusFromError(err);
-    const reason = errReason(err);
-    console.error('[transcribe] failed:', status, reason || errName(err));
-    return NextResponse.json(
-      {
-        error: 'transcription_failed',
-        message: reason ? `文字起こしに失敗しました（${reason}）` : '文字起こしに失敗しました。',
-      },
-      { status },
+    return aiErrorResponse(
+      { tag: 'transcribe', code: 'transcription_failed', messageBase: '文字起こしに失敗しました' },
+      err,
     );
   }
-}
-
-function errName(err: unknown): string {
-  if (err && typeof err === 'object' && 'name' in err) return String((err as Error).name);
-  return 'UnknownError';
-}
-
-/** Gemini SDK のエラーメッセージ（API側の失敗理由。ユーザーの音声/本文は含まれない）。 */
-function errReason(err: unknown): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    return String((err as Error).message).slice(0, 300);
-  }
-  return '';
-}
-
-function statusFromError(err: unknown): number {
-  if (err && typeof err === 'object' && 'status' in err) {
-    const s = Number((err as { status?: unknown }).status);
-    if (Number.isFinite(s) && s >= 400 && s < 600) return s;
-  }
-  return 502;
 }

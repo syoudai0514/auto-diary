@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimit } from '@/lib/rateLimit';
 import { chatModel, getGemini } from '@/lib/gemini';
-import { decryptSecret } from '@/lib/crypto';
-import { getUserById } from '@/lib/userStore';
+import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { DEFAULT_STYLE, isDiaryStyleId } from '@/lib/diary';
 import { DiaryGenerationError, generateDiary } from '@/lib/generateDiary';
 
@@ -71,18 +70,11 @@ export async function POST(req: Request) {
 
   const styleId = isDiaryStyleId(style) ? style : DEFAULT_STYLE;
 
-  const user = await getUserById(userId);
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!user.geminiKeyEncrypted) {
-    return NextResponse.json(
-      { error: 'no_api_key', message: 'Gemini APIキーが未設定です。設定画面から登録してください。' },
-      { status: 400 },
-    );
-  }
+  const keyResult = await resolveGeminiApiKey(userId);
+  if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const apiKey = decryptSecret(user.geminiKeyEncrypted);
-    const diary = await generateDiary(getGemini(apiKey), {
+    const diary = await generateDiary(getGemini(keyResult.apiKey), {
       transcript,
       style: styleId,
       model: chatModel(),
@@ -97,31 +89,9 @@ export async function POST(req: Request) {
         { status: 502 },
       );
     }
-    const status = statusFromError(err);
-    const reason = errReason(err);
-    console.error('[generate] failed:', status, reason || (err instanceof Error ? err.name : 'UnknownError'));
-    return NextResponse.json(
-      {
-        error: 'generation_failed',
-        message: reason ? `日記の生成に失敗しました（${reason}）` : '日記の生成に失敗しました。',
-      },
-      { status },
+    return aiErrorResponse(
+      { tag: 'generate', code: 'generation_failed', messageBase: '日記の生成に失敗しました' },
+      err,
     );
   }
-}
-
-function statusFromError(err: unknown): number {
-  if (err && typeof err === 'object' && 'status' in err) {
-    const s = Number((err as { status?: unknown }).status);
-    if (Number.isFinite(s) && s >= 400 && s < 600) return s;
-  }
-  return 502;
-}
-
-/** Gemini SDK のエラーメッセージ（API側の失敗理由。ユーザーの文字起こし本文は含まれない）。 */
-function errReason(err: unknown): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    return String((err as Error).message).slice(0, 300);
-  }
-  return '';
 }
