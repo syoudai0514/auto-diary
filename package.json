@@ -5,6 +5,7 @@
   "description": "個人用の音声日記PWA — iPhoneで話した内容をAIが自然な日本語の日記にまとめる",
   "scripts": {
     "dev": "next dev",
+    "dev:mock": "node scripts/dev-mock.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
