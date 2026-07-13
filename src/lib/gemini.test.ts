@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { guessAudioMimeType, extractText, chatModel, transcribeModel, getGemini } from './gemini';
+import {
+  guessAudioMimeType,
+  extractText,
+  chatModel,
+  transcribeModel,
+  getGemini,
+  collapseRepeatedLines,
+} from './gemini';
 
 describe('getGemini', () => {
   it('APIキーを渡せばクライアントを生成できる', () => {
@@ -69,5 +76,38 @@ describe('既定モデル（環境変数未設定時のフォールバック）'
   it('未設定時は gemini-3.1-flash-lite を使う', () => {
     expect(chatModel()).toBe('gemini-3.1-flash-lite');
     expect(transcribeModel()).toBe('gemini-3.1-flash-lite');
+  });
+});
+
+describe('collapseRepeatedLines', () => {
+  it('重複のない通常の文章はそのまま返す', () => {
+    const text = 'A: 片付けしてよ\nB: 後でやるって言ったじゃん\nA: いつも後でって言う';
+    expect(collapseRepeatedLines(text)).toBe(text);
+  });
+
+  it('同一行が10回以下の連続なら変化しない', () => {
+    const text = Array(10).fill('A: ごめん').join('\n');
+    expect(collapseRepeatedLines(text)).toBe(text);
+  });
+
+  it('同一行が50回連続する場合は10回に畳み込む（文字起こし暴走対策）', () => {
+    const runaway = Array(50).fill('A: ごめんごめんごめん').join('\n');
+    const collapsed = collapseRepeatedLines(runaway);
+    expect(collapsed.split('\n')).toHaveLength(10);
+    expect(collapsed.split('\n').every((l) => l === 'A: ごめんごめんごめん')).toBe(true);
+  });
+
+  it('繰り返しの前後にある通常の行は保持する', () => {
+    const runaway = ['A: 片付けしてよ', ...Array(30).fill('B: はいはい'), 'A: もういい'].join('\n');
+    const collapsed = collapseRepeatedLines(runaway);
+    const lines = collapsed.split('\n');
+    expect(lines[0]).toBe('A: 片付けしてよ');
+    expect(lines[lines.length - 1]).toBe('A: もういい');
+    expect(lines.filter((l) => l === 'B: はいはい')).toHaveLength(10);
+  });
+
+  it('空文字・改行のみの入力でも例外を投げない', () => {
+    expect(collapseRepeatedLines('')).toBe('');
+    expect(collapseRepeatedLines('\n\n\n')).toBe('\n\n\n');
   });
 });

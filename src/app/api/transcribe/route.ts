@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { extractText, getGemini, guessAudioMimeType, maxAudioBytes, transcribeModel } from '@/lib/gemini';
+import {
+  collapseRepeatedLines,
+  extractText,
+  getGemini,
+  guessAudioMimeType,
+  maxAudioBytes,
+  TRANSCRIBE_MAX_OUTPUT_TOKENS,
+  transcribeModel,
+} from '@/lib/gemini';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 
 export const runtime = 'nodejs';
@@ -86,10 +94,11 @@ export async function POST(req: Request) {
       ],
       config: {
         temperature: 0,
+        maxOutputTokens: TRANSCRIBE_MAX_OUTPUT_TOKENS,
       },
     });
 
-    const text = extractText(response).trim();
+    const text = collapseRepeatedLines(extractText(response).trim());
     return NextResponse.json({ text });
   } catch (err: unknown) {
     return aiErrorResponse(

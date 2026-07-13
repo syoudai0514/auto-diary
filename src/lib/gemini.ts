@@ -43,6 +43,36 @@ export function extractText(response: { text?: string }): string {
   return typeof response.text === 'string' ? response.text : '';
 }
 
+/**
+ * 文字起こし呼び出しの出力トークン上限。無音区間などで文字起こしが暴走し
+ * 出力が際限なく膨らむハルシネーションへの歯止め（正当な長い会話は十分収まる余裕を持たせる）。
+ */
+export const TRANSCRIBE_MAX_OUTPUT_TOKENS = 8192;
+
+/** 同一行が連続する場合に残す最大回数。 */
+const MAX_CONSECUTIVE_REPEATED_LINES = 10;
+
+/**
+ * 文字起こし結果の行単位の暴走的な繰り返しを畳み込む。
+ * Gemini の音声文字起こしは、無音区間や聞き取りにくい箇所で同じ発言を
+ * 際限なく繰り返すことがある（既知のハルシネーション挙動）。同一行が
+ * MAX_CONSECUTIVE_REPEATED_LINES 回を超えて連続した場合のみ、先頭分だけ残す。
+ */
+export function collapseRepeatedLines(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    let j = i + 1;
+    while (j < lines.length && lines[j] === lines[i]) j++;
+    const runLength = j - i;
+    const keep = Math.min(runLength, MAX_CONSECUTIVE_REPEATED_LINES);
+    for (let k = 0; k < keep; k++) result.push(lines[i]);
+    i = j;
+  }
+  return result.join('\n');
+}
+
 /** 拡張子 → MIME タイプ。ブラウザが型を報告できない音声ファイル向けのフォールバック用。 */
 const EXT_MIME_MAP: Record<string, string> = {
   m4a: 'audio/mp4',
