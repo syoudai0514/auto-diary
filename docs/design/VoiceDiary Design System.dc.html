@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body { margin:0; font-family:'Noto Sans JP',-apple-system,system-ui,sans-serif; background:#F7F3EC; }
+    ::-webkit-scrollbar { display:none; }
+    code, .mono { font-family:'JetBrains Mono',ui-monospace,monospace; }
+  </style>
+</helmet>
+
+<div style="max-width:1080px; margin:0 auto; padding:56px 32px 120px; color:#2B2622;">
+
+  <div style="margin-bottom:56px;">
+    <div style="font-size:12px; font-weight:700; letter-spacing:0.08em; color:#C1652E; text-transform:uppercase; margin-bottom:10px;">音声日記PWA</div>
+    <div style="font-size:34px; font-weight:700; line-height:1.3; margin-bottom:10px;">デザインシステム & 実装ハンドオフ</div>
+    <div style="font-size:15px; line-height:1.8; color:rgba(43,38,34,0.65); max-width:680px;">方向性「ウォーム・ペーパー」(1a)。Next.js + TypeScript + Tailwind CSS での実装を前提に、トークン・コンポーネント仕様・状態一覧・実装意図をまとめています。プロトタイプ本体は VoiceDiary Prototype.dc.html を参照。</div>
+  </div>
+
+  <!-- ============ COLOR ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">1. カラーパレット</h2>
+    <div style="font-size:13px; color:rgba(43,38,34,0.55); margin-bottom:20px;">ライト/ダークで色相を保ったまま明度のみ反転。アクセントは1色(テラコッタ)に絞り、録音色は独立させて意味を混同しない。</div>
+
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:20px;">
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:12px;">ライトモード</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#F7F3EC; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);"></div><div style="font-size:13px; flex:1;">背景 Background</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#F7F3EC</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#F0E4CC;"></div><div style="font-size:13px; flex:1;">カード / サーフェス Surface</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#F0E4CC</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#2B2622;"></div><div style="font-size:13px; flex:1;">本文テキスト Text</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#2B2622</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#C1652E;"></div><div style="font-size:13px; flex:1;">アクセント Accent</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#C1652E</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#D6432E;"></div><div style="font-size:13px; flex:1;">録音中 Recording</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#D6432E</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#4C7A52;"></div><div style="font-size:13px; flex:1;">成功 Success</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#4C7A52</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#8A5A22;"></div><div style="font-size:13px; flex:1;">警告 Warning</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#8A5A22</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#D6432E;"></div><div style="font-size:13px; flex:1;">エラー Error</div><code class="mono" style="font-size:11.5px; color:rgba(43,38,34,.6);">#D6432E</code></div>
+        </div>
+      </div>
+
+      <div style="background:#211D19; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:12px; color:#F3ECE0;">ダークモード</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#211D19; box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">背景 Background</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#211D19</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#2B241E;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">カード / サーフェス Surface</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#2B241E</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#F3ECE0;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">本文テキスト Text</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#F3ECE0</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#E08A54;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">アクセント Accent</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#E08A54</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#E85A42;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">録音中 Recording</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#E85A42</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#6FA876;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">成功 Success</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#6FA876</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#D9A63E;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">警告 Warning</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#D9A63E</code></div>
+          <div style="display:flex; align-items:center; gap:10px;"><div style="width:28px; height:28px; border-radius:8px; background:#E85A42;"></div><div style="font-size:13px; flex:1; color:#F3ECE0;">エラー Error</div><code class="mono" style="font-size:11.5px; color:rgba(243,236,224,.6);">#E85A42</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; padding:16px 18px; background:#fff; border-radius:14px; font-size:13px; line-height:1.8; color:rgba(43,38,34,0.7);">
+      <strong style="color:#2B2622;">ダークモードのルール:</strong> 単純な白黒反転ではなく、同一の暖色相を保持したまま明度を反転(背景 L≈97%→18%)。アクセント/録音色はダーク側で+8〜10%明度を上げ、暗背景でのコントラスト比を確保(本文テキストは背景に対しWCAG AA以上)。影は白背景では暖色寄りの薄い影、暗背景では黒の濃い影に切り替える。
+    </div>
+  </section>
+
+  <!-- ============ TYPOGRAPHY ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">2. 日本語フォント & タイプスケール</h2>
+    <div style="font-size:13px; color:rgba(43,38,34,0.55); margin-bottom:20px;">游ゴシック体の代替として Noto Sans JP を採用。行間は日本語の可読性を優先し広めに設定(1.6〜1.95)。</div>
+    <div style="background:#fff; border-radius:16px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,0.06); display:flex; flex-direction:column; gap:18px;">
+      <div><div style="font-size:23px; font-weight:700;">見出し Heading — 20–24px / 700 / line-height 1.4</div><div style="font-size:11.5px; color:rgba(43,38,34,.5); margin-top:2px;">画面タイトル・日記タイトル</div></div>
+      <div><div style="font-size:17px; font-weight:600;">小見出し Subheading — 16–17px / 600 / line-height 1.5</div><div style="font-size:11.5px; color:rgba(43,38,34,.5); margin-top:2px;">リスト項目タイトル・セクション見出し</div></div>
+      <div><div style="font-size:15.5px; font-weight:400; line-height:1.9;">本文 Body — 15–16px / 400 / line-height 1.85–1.95 — 日記本文や説明文に使用。既定の日本語読了速度を考慮し、1行40字前後で改行されるよう最大幅を制御する。</div></div>
+      <div><div style="font-size:13px; font-weight:400; color:rgba(43,38,34,.6);">補足 Caption — 12–13px / 400 / line-height 1.6 — 日時・秒数・ヒント文言</div></div>
+    </div>
+    <div style="margin-top:12px; font-size:12.5px; color:rgba(43,38,34,0.5);">フォントスタック: <code class="mono">'Noto Sans JP', -apple-system, system-ui, sans-serif</code> ／ 等幅数値(タイマー等)には <code class="mono">font-variant-numeric: tabular-nums</code></div>
+  </section>
+
+  <!-- ============ SPACING / RADIUS / SHADOW ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">3. 余白・角丸・影</h2>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:16px;">
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:10px;">余白スケール (4pt base)</div>
+        <div style="font-size:12.5px; line-height:2; color:rgba(43,38,34,.7);">4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48px<br/>画面外周: 20–24px ／ セクション間: 32–40px ／ リスト行: 16px</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:10px;">角丸</div>
+        <div style="font-size:12.5px; line-height:2; color:rgba(43,38,34,.7);">小要素(チップ等): 12–16px<br/>カード・バナー: 14–16px<br/>ボタン(丸型): height/2 (pill)<br/>デバイスシート: 24–26px</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:13px; font-weight:700; margin-bottom:10px;">影</div>
+        <div style="font-size:12.5px; line-height:2; color:rgba(43,38,34,.7);">通常カード: なし〜1px境界線のみ<br/>主要CTA: 0 10px 22px rgba(accent,0.3)<br/>トースト: 0 12px 28px rgba(0,0,0,0.22)<br/>過度な多層シャドウは使用しない</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPONENTS ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">4. コンポーネント仕様</h2>
+    <div style="display:flex; flex-direction:column; gap:14px; margin-top:16px;">
+
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:8px;">ボタン — Primary</div>
+        <div style="font-size:12.5px; line-height:1.9; color:rgba(43,38,34,.7);">高さ 52–56px・角丸 pill・背景 accent・文字 17px/600。1画面に1つのみ配置(強調は視覚的に一意)。フルwidth、親指到達域である画面下部に固定。押下時 scale(0.97)、150ms ease-out。</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:8px;">ボタン — Secondary / Icon</div>
+        <div style="font-size:12.5px; line-height:1.9; color:rgba(43,38,34,.7);">44×44pt以上を厳守。背景 card 色 or transparent、テキストのみ、または枠線1px border色。結果画面の二次操作(コピー・共有等)は横スクロールのチップ列で提示し、主要CTAと視覚的に競合させない。</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:8px;">録音ボタン (FAB)</div>
+        <div style="font-size:12.5px; line-height:1.9; color:rgba(43,38,34,.7);">76×76pt、画面下部中央・親指の自然な到達位置。タップで scale(1.08) の軽い拡大(150–200ms)。録音中は停止(角丸スクエア)・一時停止(バー2本 / 三角)・キャンセル(ゴミ箱)の3ボタン構成、中央の停止ボタンのみ大きく強調。</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:8px;">入力欄・折りたたみ</div>
+        <div style="font-size:12.5px; line-height:1.9; color:rgba(43,38,34,.7);">「元の文字起こし」はデフォルトで折りたたみ、タップで展開(chevron回転 200ms)。タイトル・本文は生成後インライン編集可能なテキストとして扱う(実装時は contentEditable もしくは textarea、フォーカス時にアクセント色の下線)。</div>
+      </div>
+      <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:8px;">アイコン</div>
+        <div style="font-size:12.5px; line-height:1.9; color:rgba(43,38,34,.7);">Lucide Icons を想定した線画(stroke 1.6–2px、丸端 round cap/join)。塗りつぶしアイコンや絵文字は使用しない。サイズは 16 / 18 / 20 / 24 / 34px の5段階。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ANIMATION ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">5. アニメーション</h2>
+    <div style="background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <tbody>
+          <tr style="border-bottom:1px solid rgba(43,38,34,.1);"><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55); width:40%;">画面遷移</td><td style="padding:10px 0;">フェード+8px上方向スライド、200ms ease-out</td></tr>
+          <tr style="border-bottom:1px solid rgba(43,38,34,.1);"><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55);">録音開始</td><td style="padding:10px 0;">FABが1.08倍に軽く拡大、150ms</td></tr>
+          <tr style="border-bottom:1px solid rgba(43,38,34,.1);"><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55);">録音中の波形</td><td style="padding:10px 0;">各バーが0.7–1.1s周期でscaleY 0.4↔1をループ(位相をずらす)</td></tr>
+          <tr style="border-bottom:1px solid rgba(43,38,34,.1);"><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55);">録音中インジケータ</td><td style="padding:10px 0;">赤ドットが1.2s周期でscale+opacityパルス</td></tr>
+          <tr style="border-bottom:1px solid rgba(43,38,34,.1);"><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55);">AI処理中</td><td style="padding:10px 0;">円弧が1sで360°回転する穏やかなスピナーのみ。パーティクル等の演出は使用しない</td></tr>
+          <tr><td style="padding:10px 8px 10px 0; color:rgba(43,38,34,.55);">保存完了</td><td style="padding:10px 0;">チェックマークが 320ms でpop-in、トーストは1.5s表示後フェードアウト</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:14px; font-size:12.5px; line-height:1.8; color:rgba(43,38,34,.7);"><strong>Reduce Motion:</strong> OS設定の <code class="mono">prefers-reduced-motion: reduce</code> を検知した場合、上記すべてのループ・トランジションを無効化し瞬時切り替えに統一する(プロトタイプ上部の「動きを減らす」トグルで確認可能)。</div>
+    </div>
+  </section>
+
+  <!-- ============ STATES ============ -->
+  <section style="margin-bottom:52px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">6. 操作状態一覧</h2>
+    <div style="background:#fff; border-radius:16px; padding:4px 20px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="display:flex; flex-direction:column;">
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">初回利用</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">オンボーディング → マイク権限確認の2ステップ。権限拒否時は理由と設定への導線を明示。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">録音中/一時停止</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">タイマー・波形・赤ドットで状態を明示。一時停止中は波形静止・ドット灰色に変化。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">長すぎる録音</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">目安20分(プロトタイプは20秒でデモ)超で警告バナーを表示、録音は継続可能。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">文字起こし中/生成中</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">同一レイアウトでタイトル・本文コピーのみ切替。キャンセル可能。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">通信エラー</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">文字起こし済みデータは保持されている旨を明記し、再試行のみで復帰できるようにする。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">空の録音</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">2秒未満 or 無音判定時。再録音導線のみのシンプルなエラー。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">日記生成完了</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">主要保存ボタンを1つだけ強調。折りたたみ文字起こし・コピー系・外部保存・書き直し・削除はチップ列に整理。</div></div>
+        <div style="display:flex; gap:16px; padding:14px 0; border-bottom:1px solid rgba(43,38,34,.1);"><div style="width:150px; font-size:12.5px; font-weight:700; flex-shrink:0;">保存完了/未保存下書き</div><div style="font-size:12.5px; color:rgba(43,38,34,.7);">保存完了はトーストのみ(モーダルにしない)。未保存下書きはホーム上部にバナーで常時通知。</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HANDOFF ============ -->
+  <section style="margin-bottom:40px;">
+    <h2 style="font-size:20px; font-weight:700; margin:0 0 6px;">7. Claude Code ハンドオフ・メモ</h2>
+    <div style="background:#2B2622; color:#F3ECE0; border-radius:16px; padding:24px; font-size:13px; line-height:1.9;">
+      <div style="margin-bottom:14px;"><strong>構造方針:</strong> Next.js (App Router) + TypeScript + Tailwind CSS。トークンは <code class="mono">tailwind.config.ts</code> の <code class="mono">theme.extend.colors</code> に上記カラーを登録し(例: <code class="mono">bg.DEFAULT / accent.DEFAULT / recording / warning / success</code>)、ダークモードは <code class="mono">class</code> 戦略(<code class="mono">dark:</code>)で切替。</div>
+      <div style="margin-bottom:14px;"><strong>状態管理:</strong> 録音フローは有限状態機械として実装(idle → recording ⇄ paused → transcribing → generating → result / error / empty)。本プロトタイプの <code class="mono">Component.state.screen</code> がそのままステート名の参考になる。</div>
+      <div style="margin-bottom:14px;"><strong>アクセシビリティ:</strong> すべてのタップ領域は最低44×44pt。<code class="mono">prefers-reduced-motion</code> をCSSメディアクエリで検知し、Tailwindの <code class="mono">motion-reduce:</code> ユーティリティでアニメーションを無効化。</div>
+      <div style="margin-bottom:14px;"><strong>PWA要件:</strong> manifest.json でスタンドアロン表示・テーマカラーはライト/ダークそれぞれの背景色を指定。iOS Safe Area は <code class="mono">env(safe-area-inset-*)</code> をpadding-bottomに反映(ホームインジケータと主要ボタンの干渉回避)。</div>
+      <div><strong>キーボード表示時:</strong> タイトル編集など入力を伴う画面では、主要保存ボタンをキーボード直上に追従させる(<code class="mono">visualViewport</code> APIでの高さ検知、もしくは sticky footer)。</div>
+    </div>
+  </section>
+
+  <div style="font-size:12px; color:rgba(43,38,34,0.4); text-align:center; padding-top:20px; border-top:1px solid rgba(43,38,34,.1);">VoiceDiary Prototype.dc.html と対で運用してください</div>
+</div>
+
+</x-dc>
+</body>
+</html>
