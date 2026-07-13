@@ -1,0 +1,32 @@
+{
+  "name": "事実ノート",
+  "short_name": "事実ノート",
+  "description": "感情的な出来事を、事実に戻す記録アプリ",
+  "lang": "ja",
+  "start_url": "/factnote",
+  "scope": "/factnote",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f3ec",
+  "theme_color": "#f7f3ec",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

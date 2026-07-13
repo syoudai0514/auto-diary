@@ -4,9 +4,10 @@
  * - アプリシェル（オフラインでも起動できる静的アセット）だけをキャッシュする。
  * - 音声・日記本文などの機微データや API 応答はキャッシュしない（プライバシー配慮）。
  */
-const CACHE = 'voice-diary-shell-v1';
+const CACHE = 'voice-diary-shell-v2';
 const APP_SHELL = [
   '/manifest.webmanifest',
+  '/factnote-manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png',
