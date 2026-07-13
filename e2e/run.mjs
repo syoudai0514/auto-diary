@@ -22,6 +22,7 @@ import { run as accountsFlow } from './flows/accounts.mjs';
 import { run as reviseFlow } from './flows/revise.mjs';
 import { run as appleGateFlow } from './flows/apple-gate.mjs';
 import { run as talkFlow } from './flows/talk.mjs';
+import { run as factnoteFlow } from './flows/factnote.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nextBin = path.join(repoRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
@@ -121,6 +122,7 @@ async function main() {
       ['revise', reviseFlow],
       ['apple-gate', appleGateFlow],
       ['talk', talkFlow],
+      ['factnote', factnoteFlow],
     ];
     for (const [name, flow] of flows) {
       console.log(`[e2e] flow: ${name}`);

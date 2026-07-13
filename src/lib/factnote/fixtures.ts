@@ -134,6 +134,17 @@ export function buildMockAnalysis(overrides?: Partial<IncidentAnalysis>): Incide
   };
 }
 
+/** AI_MOCK=1 の分析ルートが返す結果（分析 + タイトル + 分類フラグ）。 */
+export function buildMockAnalyzeResult() {
+  return {
+    analysis: buildMockAnalysis(),
+    title: '荷物の受け取りを忘れた',
+    isPositiveEvent: false,
+    isConflict: true,
+    isRepairAction: false,
+  };
+}
+
 /** モック日記（モード別の固定文面）。 */
 export function buildMockDiary(mode: DiaryMode): { title: string; body: string } {
   const bodies: Record<DiaryMode, { title: string; body: string }> = {

@@ -4,41 +4,39 @@
 
 ## 完了したこと
 
-- Phase 0: `docs/factnote/PLAN.md`（実装計画）と本書を作成
-- Phase 1（P0基盤）:
-  - `src/lib/factnote/appConfig.ts` / `types.ts`（§21確定版データモデル）
-  - `src/lib/factnote/db.ts` + `db.test.ts`（IndexedDB 4ストア: records/attachments/trash/meta、ゴミ箱30日、文字起こしキャッシュ、`navigator.storage.persist()`）
-  - `src/lib/factnote/fixtures.ts` + `fixtures.test.ts`（モック分析・モック日記・サンプル10件のビルダー）
-  - `src/lib/factnote/sampleData.ts`（設定画面から投入/削除）/ `mock.ts`（AI_MOCK=1 判定）
-  - `src/lib/factnote/exportData.ts`（JSON一括エクスポート + 最終バックアップ日時更新）
-  - `next.config.mjs`: `NEXT_PUBLIC_APP_VARIANT=factnote` で `/` → `/factnote` リダイレクト（既定OFF）
-  - 画面: ホーム / 記録一覧（検索+種別フィルタ）/ 記録詳細（タブ: 日記・分析・文字起こし・原本 + ゴミ箱削除）/ 設定（APIキー・JSONエクスポート・永続化・サンプルデータ）
-  - `AnalysisView.tsx`（§12全セクション + §13責任表 + 安全確認カード + 返信案3種コピー。詳細と分析結果画面で共用）
-  - `src/components/icons.tsx` に FileText/Download/Scale/Image/Zap/Heart/Shield を追加
-
-## 作業中のもの
-
-- `/factnote/new` はプレースホルダのみ（Phase 2 で入力フロー状態機械を実装）
-
-## 次にやること（順番付き）
-
-1. Phase 2-1: `src/lib/factnote/prompts/`（transcribe/incidentAnalysis/diary、PROMPT_VERSION付き）+ `analyzeIncident.ts` / `generateFactnoteDiary.ts`（zod検証。`analyzeTalk.ts` パターン）+ テスト
-2. Phase 2-2: APIルート `/api/factnote/transcribe`・`analyze`・`diary`（AI_MOCK分岐込み）+ ルートテスト
-3. Phase 2-3: `src/lib/factnote/api.ts`（クライアントラッパ + SHA-256文字起こしキャッシュ）
-4. Phase 2-4〜5: `/factnote/new` の状態機械（文章/録音/ファイル → 補足情報 → 文字起こし確認 → 分析 → 日記生成・編集 → 保存）。文字起こし完了時点で必ずIndexedDB保存
-5. Phase 2-8: E2E `e2e/flows/factnote.mjs` を `run.mjs` に登録
-6. README追記 → 検証 → コミット
+- **Phase 0**: `docs/factnote/PLAN.md`（実装計画）と本書を作成
+- **Phase 1（P0基盤）**: データモデル（`src/lib/factnote/types.ts`）/ IndexedDB 4ストア（`db.ts`: records/attachments/trash/meta、ゴミ箱30日、文字起こしキャッシュ、`storage.persist()`）/ サンプル10件・モックAI（`fixtures.ts` / `sampleData.ts` / `mock.ts`）/ JSONエクスポート（`exportData.ts`）/ ホーム・一覧・詳細・設定画面 / `AnalysisView.tsx` / `NEXT_PUBLIC_APP_VARIANT=factnote` リダイレクト
+- **Phase 2（P0コアループ）**:
+  - プロンプト3ファイル（`src/lib/factnote/prompts/` — transcribe / incidentAnalysis / diary、各 `PROMPT_VERSION='v1'`）
+  - サーバーロジック: `analyzeIncident.ts`（responseSchema + zod + フェンス抽出 + 1回再生成 + MAX_TOKENS切り詰め検知、`maxOutputTokens=16384`）/ `generateFactnoteDiary.ts`（5モード、4096トークン上限）/ `jsonExtract.ts`
+  - APIルート3本: `/api/factnote/transcribe`・`analyze`・`diary`（`requireAuth` → `rateLimitDistributed` → `resolveGeminiApiKey` → `aiErrorResponse` の既存パターン、`AI_MOCK=1` 分岐込み）
+  - クライアント: `src/lib/factnote/api.ts`（280秒タイムアウト、SHA-256ヘルパー）。既存 `src/lib/api.ts` のヘルパー4つ（`parseError`/`fetchWithTimeout`/`postJson`/`AI_REQUEST_TIMEOUT_MS`）を export 化
+  - フロー: `NewFlow.tsx`（文章/録音/ファイル → 補足情報(`SupplementStep.tsx`) → 文字起こし(チャンク直列+キャッシュ+進捗) → 確認・修正(原音声を残すか選択) → 分析 → 結果 → 日記5モード生成・編集 → 保存）。**原本Blobは文字起こし前に保存、文字起こしは分析前に保存**（§11）
+  - フロー純ロジック: `newRecord.ts`（補足情報の変換・分析結果の反映・原本非破壊）+ テスト
+  - E2E: `e2e/flows/factnote.mjs`（文章入力→分析全セクション→日記→詳細タブ→一覧→JSONエクスポート→削除）を `run.mjs` に登録
+  - README に「事実ノート」節を追記
 
 ## 検証コマンドと最新の実行結果
 
 ```
 npm run typecheck && npm run test && npm run lint && npm run build
-npm run test:e2e
+E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は実行環境依存（通常は不要）
 ```
 
-- Phase 1 時点: typecheck ✅ / test 304件 ✅ / lint ✅ / build ✅（test:e2e は Phase 2 で factnote フロー追加後に実行）
+- Phase 2 完了時点: typecheck ✅ / test 320件 ✅ / lint ✅ / build ✅ / **test:e2e 全5フロー PASS（既存4フロー含む）** ✅
+
+## 次にやること（順番付き — Phase 3 / P1）
+
+1. スクリーンショット取り込み（§8.4）: クライアントで長辺~1600px縮小+JPEG/WebP圧縮 → 新ルート `/api/factnote/extract-image`（`maxOutputTokens` 必須・直列送信・MIME拡張子フォールバック）
+2. 30秒メモ（§8.5）: カテゴリ選択 + 一言入力 → quick_memo レコード
+3. オンボーディング / プライバシー説明（初回のみ。録音同意の注意を含める）
+4. 補足情報の全項目化（記録目的・タグ）/ 週次振り返り（ローカル集計、`detectedPatterns.type` ベース）
+5. Markdownエクスポート / ZIPバックアップ・復元（`fflate` 追加可）/ ゴミ箱画面（db.ts の trash API は実装済み）
+6. factnoteブランドのログイン画面（現状は既存 `/login` 流用）
 
 ## 既知の問題・保留事項
 
-- factnote専用のログイン画面はP1送り（既存 `/login` を流用中）
-- 記録詳細の添付ファイルはメタ情報表示のみ（音声再生はPhase 2で attachments ストアの Blob から）
+- 記録詳細の添付音声は再生UI未実装（Blobは attachments ストアに保存済み。`URL.createObjectURL` で再生ボタンを付けるだけ）
+- 週次・月次・パターン横断ビューは未着手（P1/P2）
+- PINロック・匿名化・PDF出力は P2（PLAN.md §5）
+- E2E実行時に playwright のバージョンによっては `E2E_CHROMIUM_PATH` の指定が必要

@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-async function parseError(res: Response): Promise<ApiError> {
+export async function parseError(res: Response): Promise<ApiError> {
   let code = 'error';
   let message = '通信に失敗しました。';
   try {
@@ -38,7 +38,7 @@ async function parseError(res: Response): Promise<ApiError> {
 }
 
 /** タイムアウト付き fetch。 */
-async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs: number) {
+export async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -52,7 +52,7 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs
  * JSONボディをPOSTし、タイムアウト・ネットワーク断・エラーレスポンスを
  * ApiError に正規化して返す共通ヘルパー。
  */
-async function postJson(
+export async function postJson(
   path: string,
   body: unknown,
   timeoutMs: number,
@@ -139,7 +139,7 @@ export async function transcribeAudio(
 // タイムアウトを発生させる。ここが短すぎると、サーバー側では正常に完了できる
 // はずの遅いリクエストがクライアント都合で失敗扱いになり、ユーザーが再試行して
 // Geminiの呼び出し回数が重複してしまう。
-const AI_REQUEST_TIMEOUT_MS = 280000;
+export const AI_REQUEST_TIMEOUT_MS = 280000;
 
 export async function generateDiaryApi(
   transcript: string,
