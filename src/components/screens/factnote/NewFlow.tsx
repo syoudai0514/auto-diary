@@ -17,11 +17,16 @@ import {
 import {
   deleteAttachmentBlob,
   getCachedTranscript,
+  getRecord,
+  listFutureMemos,
+  listRecords,
   newFactnoteId,
   saveAttachmentBlob,
   saveRecord,
   setCachedTranscript,
 } from '@/lib/factnote/db';
+import { conflictsOnSameDay } from '@/lib/factnote/aggregate';
+import { matchMemos } from '@/lib/factnote/memoMatch';
 import {
   applyAnalysisResult,
   applySupplement,
@@ -36,6 +41,7 @@ import { FACTNOTE_DIARY_PROMPT_VERSION } from '@/lib/factnote/prompts/diary';
 import {
   DIARY_MODE_LABELS,
   type DiaryMode,
+  type FutureSelfMemo,
   type IncidentRecord,
   type RecordSource,
 } from '@/lib/factnote/types';
@@ -50,6 +56,7 @@ import { AutoTextarea } from '@/components/screens/common';
 import { MicIcon, UploadIcon } from '@/components/icons';
 import { AnalysisView } from './AnalysisView';
 import { FactnoteHeader } from './common';
+import { FutureMemoCard, markMemoShown } from './FutureMemoCard';
 import { SupplementStep } from './SupplementStep';
 
 export type NewFlowMode = 'text' | 'record' | 'file';
@@ -112,6 +119,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   const [diaryTitle, setDiaryTitle] = useState('');
   const [diaryBody, setDiaryBody] = useState('');
   const [saving, setSaving] = useState(false);
+  const [matchedMemos, setMatchedMemos] = useState<FutureSelfMemo[]>([]);
 
   const recordRef = useRef<IncidentRecord | null>(null);
   const generatedDiaryRef = useRef<{ title: string; body: string } | null>(null);
@@ -371,7 +379,28 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
         factnoteAnalyzeApi(sourceText, supplementToContext(supplement)),
       );
       setAnalysisResult(result);
-      await persist((r) => applyAnalysisResult(r, result));
+      const saved = await persist((r) => applyAnalysisResult(r, result));
+      // 記録保存直後の未来メモ表示（追加依頼 §18.1）。
+      // 安全上の危険がある場合は出さず、安全確認カード（AnalysisView）を優先する（§25）
+      if (result.analysis.safetyFlags.length === 0) {
+        try {
+          const [memos, all] = await Promise.all([listFutureMemos(), listRecords()]);
+          const matched = matchMemos(memos, {
+            record: saved,
+            text: sourceText,
+            emotions: supplement.emotions,
+            conflictsToday: conflictsOnSameDay(all, new Date()),
+            userIssueCount: result.analysis.userImprovementPoints.length,
+            otherIssueCount: result.analysis.otherPartyProblemPoints.length,
+          }).slice(0, 2);
+          for (const m of matched) await markMemoShown(m, saved.id);
+          setMatchedMemos(matched);
+        } catch {
+          setMatchedMemos([]);
+        }
+      } else {
+        setMatchedMemos([]);
+      }
       setStep('result');
     } catch (err) {
       await persist((r) => ({ ...r, status: 'draft' }));
@@ -626,6 +655,20 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
       <div className="flex min-h-dvh flex-col pt-safe">
         <FactnoteHeader title={record.title || '分析結果'} />
         <div className="flex-1 overflow-y-auto px-6">
+          {matchedMemos.map((memo) => (
+            <div key={memo.id} className="mt-4">
+              <FutureMemoCard
+                memo={memo}
+                recordId={record.id}
+                onClose={async () => {
+                  // カード内の「固定」等がDBを直接更新するため、ローカルの記録を同期する
+                  const fresh = await getRecord(record.id);
+                  if (fresh) recordRef.current = fresh;
+                  setMatchedMemos((ms) => ms.filter((m) => m.id !== memo.id));
+                }}
+              />
+            </div>
+          ))}
           <AnalysisView analysis={analysisResult.analysis} />
         </div>
         <div className="sticky bottom-0 bg-gradient-to-t from-bg via-bg to-transparent px-6 pb-safe pt-4">

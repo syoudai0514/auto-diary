@@ -16,6 +16,18 @@
   - E2E: `e2e/flows/factnote.mjs`（文章入力→分析全セクション→日記→詳細タブ→一覧→JSONエクスポート→削除）を `run.mjs` に登録
   - README に「事実ノート」節を追記
 
+- **機能追加（客観カルテ / フラットチェック / 未来の自分からのメモ — 追加依頼書対応）**:
+  - データモデル: `types.ts` に PersonProfile / ObjectiveProfileSummary / AggregatedItem / FlatCheckResult / FutureSelfMemo / FutureMemoDisplayLog 等を追加。IncidentRecord に `excludeFromCarte` / `pinnedMemoIds`
+  - DB v2: `db.ts` に persons / flatChecks / futureMemos / memoLogs の4ストアを追加（v1からの自動マイグレーション）
+  - ローカル集計: `aggregate.ts`（期間/人物フィルタ・件数集計・テーマ/表現辞書・衝突状況・自分側/相手側パターン・偏り検出・過去比較・講評キャッシュ指紋）— **AIを呼ばない**
+  - 人物管理: `persons.ts`（記録からの自動抽出・統合・別名分離・同義語辞書による統合候補の提示）
+  - メモ判定: `memoMatch.ts`（トリガー判定・6時間抑制・翌朝再表示・テンプレート5種）
+  - AI: `flatCheck.ts` + プロンプト3種（objectiveProfile / flatCheck / memoDraft、各v1）+ ルート3本（`/api/factnote/profile-summary`・`flat-check`・`memo-draft`。AI_MOCK対応）。カルテ講評は**集計値のみ送信**（本文・実名は送らない）
+  - 画面: `/factnote/carte`（一覧+統合候補+別名分離）/ `/factnote/carte/[personId]`（期間切替・週次傾向・テーマ展開・AI講評キャッシュ）/ `/factnote/flatcheck`（範囲選択→結果、同一条件は再実行しない）/ `/factnote/memos`（一覧+表示履歴）/ `/factnote/memos/edit`（テンプレート・トリガー・AI下書き）
+  - 統合: ホーム（カルテ/フラットチェック入口 + 翌朝再表示メモ）、記録詳細（フラットチェック導線・分類修正・カルテ除外・固定メモ表示）、NewFlow（保存直後のメモ自動表示。safetyFlags がある場合は安全確認を優先）
+  - エクスポート: persons / futureMemos / flatChecks を JSON バックアップに追加
+  - E2E: `e2e/flows/factnote-longterm.mjs`（カルテ→フラットチェック→メモ作成→自動表示→固定）
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -23,7 +35,8 @@ npm run typecheck && npm run test && npm run lint && npm run build
 E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は実行環境依存（通常は不要）
 ```
 
-- Phase 2 完了時点: typecheck ✅ / test 320件 ✅ / lint ✅ / build ✅ / **test:e2e 全5フロー PASS（既存4フロー含む）** ✅
+- Phase 2 完了時点: typecheck ✅ / test 320件 ✅ / lint ✅ / build ✅ / test:e2e 全5フロー PASS
+- 長期分析3機能の追加完了時点: typecheck ✅ / test **349件** ✅ / lint ✅ / build ✅ / **test:e2e 全6フロー PASS（既存4フロー + factnote + factnote-longterm）** ✅
 
 ## 次にやること（順番付き — Phase 3 / P1）
 

@@ -2,7 +2,11 @@
 
 import {
   FACTNOTE_SCHEMA_VERSION,
+  type FlatCheckResult,
+  type FutureMemoDisplayLog,
+  type FutureSelfMemo,
   type IncidentRecord,
+  type PersonProfile,
 } from './types';
 
 /**
@@ -20,12 +24,17 @@ import {
  */
 
 const DB_NAME = 'factnote';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const RECORDS = 'records';
 const ATTACHMENTS = 'attachments';
 const TRASH = 'trash';
 const META = 'meta';
+// version 2 で追加（客観カルテ / フラットチェック / 未来の自分からのメモ）
+const PERSONS = 'persons';
+const FLAT_CHECKS = 'flatChecks';
+const FUTURE_MEMOS = 'futureMemos';
+const MEMO_LOGS = 'memoLogs';
 
 interface AttachmentBlobRow {
   id: string;
@@ -68,6 +77,12 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(META)) {
         db.createObjectStore(META, { keyPath: 'key' });
+      }
+      // version 2: 長期分析用ストア（既存データはそのまま）
+      for (const store of [PERSONS, FLAT_CHECKS, FUTURE_MEMOS, MEMO_LOGS]) {
+        if (!db.objectStoreNames.contains(store)) {
+          db.createObjectStore(store, { keyPath: 'id' });
+        }
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -290,4 +305,102 @@ export async function getPersistState(): Promise<PersistState> {
   } catch {
     return 'unsupported';
   }
+}
+
+// ---------------------------------------------------------------------------
+// persons（客観カルテの人物。追加依頼 §4）
+
+export async function savePerson(person: PersonProfile): Promise<void> {
+  await tx(PERSONS, 'readwrite', (store) => store.put(person));
+}
+
+export async function getPerson(id: string): Promise<PersonProfile | undefined> {
+  return tx<PersonProfile | undefined>(
+    PERSONS,
+    'readonly',
+    (store) => store.get(id) as IDBRequest<PersonProfile | undefined>,
+  );
+}
+
+export async function listPersons(): Promise<PersonProfile[]> {
+  const all = await tx<PersonProfile[]>(
+    PERSONS,
+    'readonly',
+    (store) => store.getAll() as IDBRequest<PersonProfile[]>,
+  );
+  return (all ?? []).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+}
+
+export async function deletePerson(id: string): Promise<void> {
+  await tx(PERSONS, 'readwrite', (store) => store.delete(id));
+}
+
+// ---------------------------------------------------------------------------
+// flatChecks（フラットチェック履歴。単体削除可能 — 追加依頼 §26）
+
+export async function saveFlatCheck(result: FlatCheckResult): Promise<void> {
+  await tx(FLAT_CHECKS, 'readwrite', (store) => store.put(result));
+}
+
+export async function listFlatChecks(recordId?: string): Promise<FlatCheckResult[]> {
+  const all = await tx<FlatCheckResult[]>(
+    FLAT_CHECKS,
+    'readonly',
+    (store) => store.getAll() as IDBRequest<FlatCheckResult[]>,
+  );
+  const items = (all ?? []).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return recordId ? items.filter((f) => f.currentRecordId === recordId) : items;
+}
+
+export async function deleteFlatCheck(id: string): Promise<void> {
+  await tx(FLAT_CHECKS, 'readwrite', (store) => store.delete(id));
+}
+
+// ---------------------------------------------------------------------------
+// futureMemos（未来の自分からのメモ。完全削除可能 — 追加依頼 §26）
+
+export async function saveFutureMemo(memo: FutureSelfMemo): Promise<void> {
+  await tx(FUTURE_MEMOS, 'readwrite', (store) => store.put(memo));
+}
+
+export async function getFutureMemo(id: string): Promise<FutureSelfMemo | undefined> {
+  return tx<FutureSelfMemo | undefined>(
+    FUTURE_MEMOS,
+    'readonly',
+    (store) => store.get(id) as IDBRequest<FutureSelfMemo | undefined>,
+  );
+}
+
+export async function listFutureMemos(): Promise<FutureSelfMemo[]> {
+  const all = await tx<FutureSelfMemo[]>(
+    FUTURE_MEMOS,
+    'readonly',
+    (store) => store.getAll() as IDBRequest<FutureSelfMemo[]>,
+  );
+  return (all ?? []).sort((a, b) => b.priority - a.priority || (a.createdAt < b.createdAt ? -1 : 1));
+}
+
+export async function deleteFutureMemo(id: string): Promise<void> {
+  await tx(FUTURE_MEMOS, 'readwrite', (store) => store.delete(id));
+}
+
+// ---------------------------------------------------------------------------
+// memoLogs（未来メモの表示履歴）
+
+export async function saveMemoLog(log: FutureMemoDisplayLog): Promise<void> {
+  await tx(MEMO_LOGS, 'readwrite', (store) => store.put(log));
+}
+
+export async function listMemoLogs(): Promise<FutureMemoDisplayLog[]> {
+  const all = await tx<FutureMemoDisplayLog[]>(
+    MEMO_LOGS,
+    'readonly',
+    (store) => store.getAll() as IDBRequest<FutureMemoDisplayLog[]>,
+  );
+  return (all ?? []).sort((a, b) => (a.displayedAt < b.displayedAt ? 1 : -1));
+}
+
+/** 客観カルテのAI講評キャッシュのキー（差分更新用の指紋を含む）。 */
+export function profileSummaryCacheKey(personId: string, period: string, fingerprint: string): string {
+  return `profileSummary:${personId}:${period}:${fingerprint}`;
 }

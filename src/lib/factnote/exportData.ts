@@ -1,11 +1,24 @@
 'use client';
 
 import { FACTNOTE_EXPORT_PREFIX } from './appConfig';
-import { listRecords, META_LAST_BACKUP_AT, setMeta } from './db';
-import { FACTNOTE_SCHEMA_VERSION, type IncidentRecord } from './types';
+import {
+  listFlatChecks,
+  listFutureMemos,
+  listPersons,
+  listRecords,
+  META_LAST_BACKUP_AT,
+  setMeta,
+} from './db';
+import {
+  FACTNOTE_SCHEMA_VERSION,
+  type FlatCheckResult,
+  type FutureSelfMemo,
+  type IncidentRecord,
+  type PersonProfile,
+} from './types';
 
 /**
- * JSON一括エクスポート（依頼書 §26 の P0 範囲）。
+ * JSON一括エクスポート（依頼書 §26 の P0 範囲 + 長期分析データ）。
  * 添付Blobは含まない（P1のZIPバックアップで対応）。
  */
 
@@ -15,16 +28,31 @@ export interface FactnoteExport {
   exportedAt: string; // ISO
   recordCount: number;
   records: IncidentRecord[];
+  /** 長期分析データ（客観カルテの人物・未来メモ・フラットチェック履歴）。 */
+  persons?: PersonProfile[];
+  futureMemos?: FutureSelfMemo[];
+  flatChecks?: FlatCheckResult[];
 }
 
 /** エクスポート用のデータを組み立てる（純粋関数。テスト対象）。 */
-export function buildExportPayload(records: IncidentRecord[], now: Date = new Date()): FactnoteExport {
+export function buildExportPayload(
+  records: IncidentRecord[],
+  now: Date = new Date(),
+  extras?: {
+    persons?: PersonProfile[];
+    futureMemos?: FutureSelfMemo[];
+    flatChecks?: FlatCheckResult[];
+  },
+): FactnoteExport {
   return {
     app: 'factnote',
     schemaVersion: FACTNOTE_SCHEMA_VERSION,
     exportedAt: now.toISOString(),
     recordCount: records.length,
     records,
+    persons: extras?.persons ?? [],
+    futureMemos: extras?.futureMemos ?? [],
+    flatChecks: extras?.flatChecks ?? [],
   };
 }
 
@@ -33,10 +61,15 @@ export function exportFileName(now: Date = new Date()): string {
   return `${FACTNOTE_EXPORT_PREFIX}-export-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
 }
 
-/** 全記録をJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
+/** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
 export async function exportAllAsJson(): Promise<number> {
-  const records = await listRecords();
-  const payload = buildExportPayload(records);
+  const [records, persons, futureMemos, flatChecks] = await Promise.all([
+    listRecords(),
+    listPersons().catch(() => []),
+    listFutureMemos().catch(() => []),
+    listFlatChecks().catch(() => []),
+  ]);
+  const payload = buildExportPayload(records, new Date(), { persons, futureMemos, flatChecks });
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   try {

@@ -5,13 +5,16 @@ import {
   BookIcon,
   FileTextIcon,
   MicIcon,
+  ScaleIcon,
   SettingsIcon,
   UploadIcon,
+  UsersIcon,
 } from '@/components/icons';
 import { FACTNOTE_APP_NAME } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
-import type { IncidentRecord } from '@/lib/factnote/types';
+import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 import { FactnoteHeader, RecordRow, formatRecordDate } from './common';
+import { FutureMemoCard } from './FutureMemoCard';
 
 /**
  * 事実ノートのホーム（依頼書 §20）。メイン入力を最も目立たせ、
@@ -21,10 +24,15 @@ export function FactnoteHomeScreen({
   records,
   persistState,
   lastBackupAt,
+  dueMemos = [],
+  onCloseMemo,
 }: {
   records: IncidentRecord[];
   persistState: PersistState;
   lastBackupAt?: string;
+  /** 「明日の朝に再表示」の予約が来ている未来メモ。 */
+  dueMemos?: FutureSelfMemo[];
+  onCloseMemo?: (memo: FutureSelfMemo) => void;
 }) {
   const today = new Date();
   const recent = records.slice(0, 5);
@@ -47,6 +55,13 @@ export function FactnoteHomeScreen({
       </p>
 
       <div className="flex-1 overflow-y-auto px-6 pt-6">
+        {/* 「明日の朝に再表示」を選んだ未来メモ */}
+        {dueMemos.map((memo) => (
+          <div key={memo.id} className="mb-4">
+            <FutureMemoCard memo={memo} onClose={() => onCloseMemo?.(memo)} />
+          </div>
+        ))}
+
         <div className="flex items-center justify-between">
           <h2 className="text-[12px] font-medium text-text-tertiary">最近の記録</h2>
           {records.length > 0 && (
@@ -67,6 +82,34 @@ export function FactnoteHomeScreen({
               <RecordRow key={r.id} record={r} href={`/factnote/records/${r.id}`} />
             ))}
           </ul>
+        )}
+
+        {/* 長期分析への入口（追加依頼 §29。ホームは情報過多にしない） */}
+        {records.length > 0 && (
+          <div className="mt-6 space-y-2">
+            <Link
+              href="/factnote/carte"
+              className="flex min-h-[56px] items-center gap-3 rounded-card border border-border bg-surface px-4 active:opacity-70"
+            >
+              <UsersIcon width={20} height={20} className="shrink-0 text-accent" />
+              <span className="min-w-0">
+                <span className="block text-[14.5px] font-semibold">客観カルテ</span>
+                <span className="block text-[12px] text-text-tertiary">関係を長期的に見る</span>
+              </span>
+            </Link>
+            <Link
+              href={`/factnote/flatcheck?recordId=${records[0].id}`}
+              className="flex min-h-[56px] items-center gap-3 rounded-card border border-border bg-surface px-4 active:opacity-70"
+            >
+              <ScaleIcon width={20} height={20} className="shrink-0 text-accent" />
+              <span className="min-w-0">
+                <span className="block text-[14.5px] font-semibold">フラットチェック</span>
+                <span className="block truncate text-[12px] text-text-tertiary">
+                  直近の記録「{records[0].title || '無題の記録'}」を過去と比較する
+                </span>
+              </span>
+            </Link>
+          </div>
         )}
 
         {/* バックアップ状況（iOSのIndexedDB退避リスクを正直に伝える。依頼書 §21/§26） */}

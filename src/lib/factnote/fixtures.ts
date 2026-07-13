@@ -368,3 +368,44 @@ export function buildSampleRecords(now: Date = new Date()): IncidentRecord[] {
     return record;
   });
 }
+
+// ---------------------------------------------------------------------------
+// 長期分析（客観カルテ / フラットチェック / 未来メモ）のモック
+
+/** AI_MOCK=1 の客観カルテ講評。 */
+export const MOCK_PROFILE_SUMMARY =
+  '直近の記録では、家事・お金に関する衝突が複数記録されています。利用者側には予定忘れと口頭依頼のみで管理する課題が、相手側には一件の出来事を「いつも」「全部」と一般化する表現が記録されています。一方で、運転を代わるなど修復の可能性がある行動や、穏やかに話せた記録も存在します。記録件数がまだ少ないため、長期傾向として断定するには十分ではありません。';
+
+/** AI_MOCK=1 のフラットチェック応答（AI生成部分）。 */
+export function buildMockFlatCheckAiPart() {
+  const item = (id: string, text: string, confidence: 'high' | 'medium' | 'low' = 'medium') => ({
+    id,
+    text,
+    confidence,
+    evidenceIds: [] as string[],
+  });
+  return {
+    conciseConclusion:
+      '今回、約束を忘れた点はあなたのミスです。一方で、その一件を理由に家事や育児全体を否定する表現は適切ではありません。今回の反省点と、相手の一般化表現は分けて考える必要があります。',
+    userImprovementPoints: [item('fcu1', '受け取りを了承した時点で予定登録しなかった', 'high')],
+    otherPartyProblemPoints: [item('fco1', '一件のミスを「いつも」と一般化した', 'high')],
+    unknowns: [item('fcn1', '相手がどこまで本気で言ったか', 'low')],
+    avoidJudgingFromThisIncident: [
+      item('fca1', '相手の人格全体', 'high'),
+      item('fca2', '離婚すべきかどうか', 'high'),
+    ],
+    improvingPoints: [item('fci1', '記録を残して事実を確認できるようになった', 'medium')],
+    aiMessage:
+      '今回は、受け取りを忘れたことだけを反省すれば十分です。それを理由に、家事や育児全体を否定される必要はありません。',
+    aiModel: MOCK_AI_MODEL,
+    promptVersion: 'mock-v1',
+  };
+}
+
+/** AI_MOCK=1 の未来メモ下書き。 */
+export function buildMockMemoDraft(): { title: string; body: string } {
+  return {
+    title: '全部自分が悪いと思った時',
+    body: 'また全部自分が悪いと思っているかもしれない。\nまず今回の事実だけを確認しよう。\n自分の改善点は受け止める。\nでも、相手の強い言葉まで自分の責任にしなくていい。',
+  };
+}

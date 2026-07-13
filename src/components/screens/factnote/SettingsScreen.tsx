@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckIcon, DownloadIcon } from '@/components/icons';
+import Link from 'next/link';
+import { CheckIcon, DownloadIcon, HeartIcon, UsersIcon } from '@/components/icons';
 import { getGeminiKeyStatus, saveGeminiKey } from '@/lib/api';
 import { FACTNOTE_APP_NAME, FACTNOTE_APP_TAGLINE } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
@@ -98,6 +99,25 @@ export function FactnoteSettingsScreen({
             <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
               Google AI Studio で無料のAPIキーを発行できます。キーはこの端末には保存されず、AI処理のときだけサーバーで使われます。
             </p>
+          </div>
+        </Section>
+
+        <Section title="長期分析">
+          <div className="space-y-2">
+            <Link
+              href="/factnote/carte"
+              className="flex min-h-[48px] items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14px] font-medium active:opacity-70"
+            >
+              <UsersIcon width={18} height={18} className="text-accent" />
+              客観カルテ（人物の統合・別名管理）
+            </Link>
+            <Link
+              href="/factnote/memos"
+              className="flex min-h-[48px] items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14px] font-medium active:opacity-70"
+            >
+              <HeartIcon width={18} height={18} className="text-accent" />
+              未来の自分からのメモ
+            </Link>
           </div>
         </Section>
 

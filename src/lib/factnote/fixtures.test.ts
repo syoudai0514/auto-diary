@@ -64,4 +64,24 @@ describe('JSONエクスポート', () => {
   it('エクスポートファイル名は日時を含む', () => {
     expect(exportFileName(new Date(2026, 6, 13, 9, 5))).toBe('factnote-export-20260713-0905.json');
   });
+
+  it('長期分析データ（人物・未来メモ・フラットチェック）もペイロードに含まれる', () => {
+    const payload = buildExportPayload([], new Date(), {
+      persons: [
+        {
+          id: 'p1',
+          displayName: '配偶者',
+          aliases: ['妻'],
+          createdAt: 'c',
+          updatedAt: 'u',
+          mergedPersonIds: [],
+        },
+      ],
+      futureMemos: [],
+      flatChecks: [],
+    });
+    expect(payload.persons).toHaveLength(1);
+    expect(payload.futureMemos).toEqual([]);
+    expect(payload.flatChecks).toEqual([]);
+  });
 });

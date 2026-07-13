@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { TrashIcon } from '@/components/icons';
+import Link from 'next/link';
+import { ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
 import {
   DIARY_MODE_LABELS,
   RECORD_SOURCE_LABELS,
+  type FutureSelfMemo,
   type IncidentRecord,
 } from '@/lib/factnote/types';
 import { AnalysisView } from './AnalysisView';
@@ -25,10 +27,16 @@ const TABS: Array<{ id: Tab; label: string }> = [
  */
 export function FactnoteRecordDetailScreen({
   record,
+  pinnedMemos = [],
   onDelete,
+  onUpdate,
 }: {
   record: IncidentRecord;
+  /** この記録に固定された未来メモ。 */
+  pinnedMemos?: FutureSelfMemo[];
   onDelete: () => void;
+  /** 分類修正・カルテ除外などの更新（永続化は呼び出し側）。 */
+  onUpdate: (record: IncidentRecord) => void;
 }) {
   const [tab, setTab] = useState<Tab>(record.analysis ? 'analysis' : 'source');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -65,6 +73,22 @@ export function FactnoteRecordDetailScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-safe">
+        {/* この記録に固定された未来メモ（本人の言葉。AIと区別して表示） */}
+        {pinnedMemos.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {pinnedMemos.map((memo) => (
+              <div key={memo.id} className="rounded-card border-2 border-accent bg-surface px-4 py-3">
+                <div className="text-[11px] font-semibold text-accent">未来の自分から（固定）</div>
+                <div className="mt-0.5 text-[14px] font-semibold">{memo.title}</div>
+                <p className="mt-1 whitespace-pre-wrap text-[13px] leading-[1.8]">{memo.body}</p>
+                <p className="mt-1.5 text-[11px] text-text-tertiary">
+                  {formatRecordDate(memo.createdAt)}にあなた自身が書いたメモです。
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {tab === 'diary' && <DiaryTab record={record} />}
         {tab === 'analysis' &&
           (record.analysis ? (
@@ -74,6 +98,70 @@ export function FactnoteRecordDetailScreen({
           ))}
         {tab === 'transcript' && <TranscriptTab record={record} />}
         {tab === 'source' && <SourceTab record={record} />}
+
+        {/* 長期分析への導線と分類の修正（追加依頼 §30） */}
+        <Section title="長期分析">
+          <div className="space-y-2">
+            <Link
+              href={`/factnote/flatcheck?recordId=${record.id}`}
+              className="flex min-h-[52px] w-full items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14.5px] font-medium active:opacity-70"
+            >
+              <ScaleIcon width={18} height={18} className="text-accent" />
+              この出来事をフラットチェック
+              <span className="ml-auto text-[11px] text-text-tertiary">過去と比較</span>
+            </Link>
+            <Link
+              href="/factnote/carte"
+              className="flex min-h-[52px] w-full items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14.5px] font-medium active:opacity-70"
+            >
+              <UsersIcon width={18} height={18} className="text-accent" />
+              関係人物の客観カルテを見る
+            </Link>
+          </div>
+        </Section>
+
+        <Section title="分類の修正（誤分類はここで直せます）">
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ['isPositiveEvent', '良い出来事'],
+                ['isConflict', '衝突'],
+                ['isRepairAction', '修復行動'],
+              ] as const
+            ).map(([key, label]) => {
+              const on = record[key] === true;
+              return (
+                <button
+                  key={key}
+                  onClick={() =>
+                    onUpdate({ ...record, [key]: !on, updatedAt: new Date().toISOString() })
+                  }
+                  aria-pressed={on}
+                  className={`min-h-[44px] rounded-chip border px-3.5 text-[13px] active:opacity-70 ${
+                    on ? 'border-accent bg-accent text-accent-on' : 'border-border bg-surface text-text'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <label className="mt-3 flex min-h-[44px] items-center gap-3 text-[14px]">
+            <input
+              type="checkbox"
+              checked={record.excludeFromCarte === true}
+              onChange={(e) =>
+                onUpdate({
+                  ...record,
+                  excludeFromCarte: e.target.checked,
+                  updatedAt: new Date().toISOString(),
+                })
+              }
+              className="h-5 w-5 accent-[var(--c-accent)]"
+            />
+            この出来事をカルテ集計から除外する
+          </label>
+        </Section>
 
         <div className="mb-6 mt-10 flex justify-center">
           {confirmingDelete ? (

@@ -3,18 +3,25 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { FactnoteRecordDetailScreen } from '@/components/screens/factnote/RecordDetailScreen';
-import { getRecord, trashRecord } from '@/lib/factnote/db';
-import type { IncidentRecord } from '@/lib/factnote/types';
+import { getRecord, listFutureMemos, saveRecord, trashRecord } from '@/lib/factnote/db';
+import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 
 export default function FactnoteRecordDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [record, setRecord] = useState<IncidentRecord | null | undefined>(undefined);
+  const [pinnedMemos, setPinnedMemos] = useState<FutureSelfMemo[]>([]);
 
   useEffect(() => {
     if (!params?.id) return;
     getRecord(params.id)
-      .then((r) => setRecord(r ?? null))
+      .then(async (r) => {
+        setRecord(r ?? null);
+        if (r?.pinnedMemoIds?.length) {
+          const memos = await listFutureMemos();
+          setPinnedMemos(memos.filter((m) => r.pinnedMemoIds?.includes(m.id)));
+        }
+      })
       .catch(() => setRecord(null));
   }, [params?.id]);
 
@@ -43,6 +50,11 @@ export default function FactnoteRecordDetailPage() {
   return (
     <FactnoteRecordDetailScreen
       record={record}
+      pinnedMemos={pinnedMemos}
+      onUpdate={async (updated) => {
+        setRecord(updated);
+        await saveRecord(updated);
+      }}
       onDelete={async () => {
         await trashRecord(record.id);
         router.push('/factnote/records');
