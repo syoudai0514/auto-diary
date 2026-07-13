@@ -16,6 +16,13 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: FACTNOTE_APP_NAME,
   },
+  icons: {
+    icon: [
+      { url: '/icons-factnote/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons-factnote/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons-factnote/apple-touch-icon.png', sizes: '180x180' }],
+  },
 };
 
 export default function FactnoteLayout({ children }: { children: React.ReactNode }) {
