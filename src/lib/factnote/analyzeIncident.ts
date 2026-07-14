@@ -218,6 +218,8 @@ export interface AnalyzeIncidentOptions {
   sourceText: string;
   /** ユーザーが入力した補足情報。 */
   context: IncidentContext;
+  /** プロフィール（自分の立場・家族構成）。自分側/相手側の割り当てに使う。 */
+  peopleContext?: string;
   model: string;
   maxRetries?: number;
 }
@@ -225,9 +227,9 @@ export interface AnalyzeIncidentOptions {
 /** 出来事の記録から構造化分析ペイロードを生成する。 */
 export async function analyzeIncident(
   ai: GoogleGenAI,
-  { sourceText, context, model, maxRetries = 1 }: AnalyzeIncidentOptions,
+  { sourceText, context, peopleContext, model, maxRetries = 1 }: AnalyzeIncidentOptions,
 ): Promise<IncidentAnalysisPayload> {
-  const system = buildIncidentAnalysisSystemPrompt();
+  const system = buildIncidentAnalysisSystemPrompt(peopleContext);
   const user = buildIncidentAnalysisUserPrompt(sourceText, context);
 
   let truncated = false;

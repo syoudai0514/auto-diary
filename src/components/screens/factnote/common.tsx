@@ -89,7 +89,11 @@ export function RecordBadges({ record }: { record: IncidentRecord }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1.5">
       <Badge label={RECORD_SOURCE_LABELS[record.sourceType]} />
-      {record.status === 'ready' && record.analysis ? (
+      {record.status === 'transcribing' ? (
+        <Badge label="文字起こし中…" tone="accent" />
+      ) : record.status === 'analyzing' ? (
+        <Badge label="分析中…" tone="accent" />
+      ) : record.status === 'ready' && record.analysis ? (
         <Badge label="分析済み" tone="accent" />
       ) : record.status === 'error' ? (
         <Badge label="エラー" tone="error" />

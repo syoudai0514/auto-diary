@@ -5,9 +5,26 @@
  * 1回の構造化出力で生成する。
  */
 
-export const INCIDENT_ANALYSIS_PROMPT_VERSION = 'v1';
+export const INCIDENT_ANALYSIS_PROMPT_VERSION = 'v2';
 
-export function buildIncidentAnalysisSystemPrompt(): string {
+/** プロフィール（自分の立場・家族構成）のセクション。未登録なら空配列。 */
+function peopleContextSection(peopleContext?: string): string[] {
+  if (!peopleContext?.trim()) return [];
+  return [
+    '',
+    '# 記録者と登場人物についての補足情報（本人が登録したプロフィール）',
+    '以下は記録を書いている本人が登録した情報です。記録の中で誰が「自分（記録者）」で、',
+    '誰が「相手」かを判断する手がかりにしてください。記録が相手の視点で書かれている・',
+    '録音の話者ラベルが入れ替わっている可能性がある場合も、内容とこの情報から補正してください。',
+    'どちらが記録者か判断できない場合は、自分側/相手側を断定せず unknowns に含めてください。',
+    'ここに書かれていない人物を作り出したり、書かれた関係性と矛盾する記述をしたりしないでください。',
+    '----- 補足情報ここから -----',
+    peopleContext.trim(),
+    '----- 補足情報ここまで -----',
+  ];
+}
+
+export function buildIncidentAnalysisSystemPrompt(peopleContext?: string): string {
   return [
     'あなたは、家庭内や人間関係で起きた出来事を整理する、中立的で率直な記録支援者です。',
     'ユーザーから渡される記録（文字起こし・文章・メモ）を分析し、指定のJSON形式で出力します。',
@@ -62,6 +79,7 @@ export function buildIncidentAnalysisSystemPrompt(): string {
     '# 出力',
     '- 出力はJSONのみ。前置き・後書き・コードフェンスは不要。',
     '- confidence は "high"（記録から直接確認できる）/ "medium"（強く示唆される）/ "low"（推測）のいずれか。',
+    ...peopleContextSection(peopleContext),
   ].join('\n');
 }
 

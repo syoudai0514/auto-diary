@@ -28,15 +28,21 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export function FactnoteRecordDetailScreen({
   record,
   pinnedMemos = [],
+  analyzing = false,
   onDelete,
   onUpdate,
+  onAnalyze,
 }: {
   record: IncidentRecord;
   /** この記録に固定された未来メモ。 */
   pinnedMemos?: FutureSelfMemo[];
+  /** この記録の分析ジョブが実行中か。 */
+  analyzing?: boolean;
   onDelete: () => void;
   /** 分類修正・カルテ除外などの更新（永続化は呼び出し側）。 */
   onUpdate: (record: IncidentRecord) => void;
+  /** 未分析の記録をバックグラウンドで分析する。 */
+  onAnalyze?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(record.analysis ? 'analysis' : 'source');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -94,7 +100,23 @@ export function FactnoteRecordDetailScreen({
           (record.analysis ? (
             <AnalysisView analysis={record.analysis} />
           ) : (
-            <EmptyTab text="まだ分析していません。" />
+            <div className="mt-10 text-center">
+              <p className="text-[14px] text-text-tertiary">まだ分析していません。</p>
+              {onAnalyze && (
+                <>
+                  <button
+                    onClick={onAnalyze}
+                    disabled={analyzing}
+                    className="mt-5 h-13 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta disabled:opacity-50"
+                  >
+                    {analyzing ? '分析中…（他の画面に移動できます）' : 'AIで分析する'}
+                  </button>
+                  <p className="mx-auto mt-3 max-w-[280px] text-[11.5px] leading-relaxed text-text-tertiary">
+                    分析はバックグラウンドで実行され、完了するとこの記録に反映されます。
+                  </p>
+                </>
+              )}
+            </div>
           ))}
         {tab === 'transcript' && <TranscriptTab record={record} />}
         {tab === 'source' && <SourceTab record={record} />}

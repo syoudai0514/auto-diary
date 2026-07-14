@@ -8,6 +8,7 @@ import {
 import { safeParseJson } from './jsonExtract';
 import { analysisSummaryForDiary } from './generateFactnoteDiary';
 import { buildMockAnalysis } from './fixtures';
+import { INCIDENT_ANALYSIS_PROMPT_VERSION } from './prompts/incidentAnalysis';
 
 function makePayload(): IncidentAnalysisPayload {
   return {
@@ -54,7 +55,7 @@ describe('分析ペイロードの検証と組み立て', () => {
       now: new Date('2026-07-13T00:00:00Z'),
     });
     expect(result.analysis.aiModel).toBe('gemini-test');
-    expect(result.analysis.promptVersion).toBe('v1');
+    expect(result.analysis.promptVersion).toBe(INCIDENT_ANALYSIS_PROMPT_VERSION);
     expect(result.analysis.generatedAt).toBe('2026-07-13T00:00:00.000Z');
     expect(result.analysis.nextActions).toHaveLength(3);
     expect(result.analysis.verifiedFacts[0].id).toBeTruthy();

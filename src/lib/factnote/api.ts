@@ -27,10 +27,12 @@ export interface FactnoteAnalyzeResult {
 export async function factnoteTranscribeAudio(
   blob: Blob,
   filename: string,
+  peopleContext?: string,
   timeoutMs = AI_REQUEST_TIMEOUT_MS,
 ): Promise<string> {
   const form = new FormData();
   form.append('file', blob, filename);
+  if (peopleContext) form.append('peopleContext', peopleContext);
   let res: Response;
   try {
     res = await fetchWithTimeout('/api/factnote/transcribe', { method: 'POST', body: form }, timeoutMs);
@@ -49,10 +51,11 @@ export async function factnoteTranscribeAudio(
 export async function factnoteAnalyzeApi(
   sourceText: string,
   context: IncidentContext,
+  peopleContext?: string,
 ): Promise<FactnoteAnalyzeResult> {
   const res = await postJson(
     '/api/factnote/analyze',
-    { sourceText, context },
+    { sourceText, context, peopleContext },
     AI_REQUEST_TIMEOUT_MS,
     '分析がタイムアウトしました。',
   );
@@ -68,10 +71,11 @@ export async function factnoteDiaryApi(
   mode: DiaryMode,
   sourceText: string,
   analysisSummary?: string,
+  peopleContext?: string,
 ): Promise<{ title: string; body: string }> {
   const res = await postJson(
     '/api/factnote/diary',
-    { mode, sourceText, analysisSummary },
+    { mode, sourceText, analysisSummary, peopleContext },
     AI_REQUEST_TIMEOUT_MS,
     '日記の生成がタイムアウトしました。',
   );

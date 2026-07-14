@@ -5,7 +5,7 @@ import type { DiaryMode } from '../types';
  * 5モードの文体指示と、事実と感情の分離・重要発言の保全を明示する。
  */
 
-export const FACTNOTE_DIARY_PROMPT_VERSION = 'v1';
+export const FACTNOTE_DIARY_PROMPT_VERSION = 'v2';
 
 const MODE_GUIDE: Record<DiaryMode, string> = {
   factual:
@@ -19,7 +19,7 @@ const MODE_GUIDE: Record<DiaryMode, string> = {
     '詳細な日記として書く。経緯・双方の対応・自分の感情・反省点・相手に求めたいこと・今後どうしたいかまで、段落を分けて丁寧に書く。',
 };
 
-export function buildFactnoteDiarySystemPrompt(mode: DiaryMode): string {
+export function buildFactnoteDiarySystemPrompt(mode: DiaryMode, peopleContext?: string): string {
   return [
     'あなたは、ユーザーが記録した出来事を日記としてまとめる編集アシスタントです。',
     '',
@@ -35,6 +35,17 @@ export function buildFactnoteDiarySystemPrompt(mode: DiaryMode): string {
     '',
     '# 文体',
     MODE_GUIDE[mode],
+    ...(peopleContext?.trim()
+      ? [
+          '',
+          '# 書き手・登場人物についての補足情報（本人が登録したプロフィール）',
+          '登場人物はここで指定された呼び方（例: 妻、長男 など）で表現してください。',
+          'ここに書かれていない人物を作り出したり、関係性と矛盾する記述をしたりしないでください。',
+          '----- 補足情報ここから -----',
+          peopleContext.trim(),
+          '----- 補足情報ここまで -----',
+        ]
+      : []),
   ].join('\n');
 }
 

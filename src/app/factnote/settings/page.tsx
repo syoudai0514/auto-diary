@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { FactnoteSettingsScreen } from '@/components/screens/factnote/SettingsScreen';
 import { getPersistState, requestPersistentStorage, type PersistState } from '@/lib/factnote/db';
-import { exportAllAsJson } from '@/lib/factnote/exportData';
+import { canShareBackup, exportAllAsJson, shareBackupJson } from '@/lib/factnote/exportData';
+import { loadFactnoteProfile, saveFactnoteProfile } from '@/lib/factnote/profile';
 import { isSampleDataLoaded, loadSampleData, removeSampleData } from '@/lib/factnote/sampleData';
 
 export default function FactnoteSettingsPage() {
@@ -11,12 +12,16 @@ export default function FactnoteSettingsPage() {
   const [sampleLoaded, setSampleLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [profileMarkdown, setProfileMarkdown] = useState('');
+  const [canShare, setCanShare] = useState(false);
 
   useEffect(() => {
     getPersistState().then(setPersistState);
     isSampleDataLoaded()
       .then(setSampleLoaded)
       .catch(() => setSampleLoaded(false));
+    loadFactnoteProfile().then((p) => setProfileMarkdown(p.markdown));
+    setCanShare(canShareBackup());
   }, []);
 
   async function run(label: string, fn: () => Promise<string>) {
@@ -37,10 +42,27 @@ export default function FactnoteSettingsPage() {
       sampleLoaded={sampleLoaded}
       busy={busy}
       message={message}
+      profileMarkdown={profileMarkdown}
+      canShare={canShare}
+      onSaveProfile={(markdown) =>
+        run('プロフィールの保存', async () => {
+          const saved = await saveFactnoteProfile(markdown);
+          setProfileMarkdown(saved.markdown);
+          return 'プロフィールを保存しました。次回のAI処理から反映されます。';
+        })
+      }
       onExportJson={() =>
         run('エクスポート', async () => {
           const count = await exportAllAsJson();
           return `${count}件の記録をエクスポートしました。ファイルを安全な場所に保管してください。`;
+        })
+      }
+      onShareJson={() =>
+        run('バックアップの共有', async () => {
+          const { shared, count } = await shareBackupJson();
+          return shared
+            ? `${count}件の記録を共有しました。「"ファイル"に保存」でiCloud Driveを選ぶとiCloudに保存されます。`
+            : '共有をキャンセルしました。';
         })
       }
       onLoadSample={() =>

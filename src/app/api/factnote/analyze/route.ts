@@ -63,10 +63,12 @@ export async function POST(req: Request) {
 
   let sourceText: unknown;
   let contextRaw: unknown;
+  let peopleContextRaw: unknown;
   try {
     const body = await req.json();
     sourceText = body?.sourceText;
     contextRaw = body?.context;
+    peopleContextRaw = body?.peopleContext;
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
@@ -96,6 +98,10 @@ export async function POST(req: Request) {
     const payload = await analyzeIncident(getGemini(keyResult.apiKey), {
       sourceText,
       context: sanitizeContext(contextRaw),
+      peopleContext:
+        typeof peopleContextRaw === 'string' && peopleContextRaw.trim()
+          ? peopleContextRaw.slice(0, 2000)
+          : undefined,
       model,
     });
     const result = toIncidentAnalysisResult(payload, { aiModel: model });

@@ -1,23 +1,29 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { CheckIcon, DownloadIcon, HeartIcon, UsersIcon } from '@/components/icons';
+import { CheckIcon, DownloadIcon, ShareIcon } from '@/components/icons';
 import { getGeminiKeyStatus, saveGeminiKey } from '@/lib/api';
 import { FACTNOTE_APP_NAME, FACTNOTE_APP_TAGLINE } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
+import { FACTNOTE_PROFILE_PLACEHOLDER } from '@/lib/factnote/profile';
+import { AutoTextarea } from '@/components/screens/common';
 import { FactnoteHeader, Section } from './common';
+import { FactnoteTabBar } from './TabBar';
 
 /**
- * 事実ノートの設定（P0最小構成）: Gemini APIキー・エクスポート・
- * ストレージ永続化状態・サンプルデータ（依頼書 §32-25 / §33）。
+ * 事実ノートの設定: プロフィール・Gemini APIキー・バックアップ・
+ * ストレージ永続化状態・サンプルデータ。
  */
 export function FactnoteSettingsScreen({
   persistState,
   sampleLoaded,
   busy,
   message,
+  profileMarkdown,
+  onSaveProfile,
   onExportJson,
+  onShareJson,
+  canShare,
   onLoadSample,
   onRemoveSample,
   onRequestPersist,
@@ -26,11 +32,20 @@ export function FactnoteSettingsScreen({
   sampleLoaded: boolean;
   busy: boolean;
   message: string | null;
+  /** 保存済みのプロフィール本文。 */
+  profileMarkdown: string;
+  onSaveProfile: (markdown: string) => void;
   onExportJson: () => void;
+  /** 共有シート経由のバックアップ（iCloud Drive等へ保存できる）。 */
+  onShareJson: () => void;
+  /** この端末で共有シートが使えるか。 */
+  canShare: boolean;
   onLoadSample: () => void;
   onRemoveSample: () => void;
   onRequestPersist: () => void;
 }) {
+  const [profileDraft, setProfileDraft] = useState(profileMarkdown);
+  useEffect(() => setProfileDraft(profileMarkdown), [profileMarkdown]);
   const [keyStatus, setKeyStatus] = useState<'loading' | 'set' | 'unset'>('loading');
   const [keyInput, setKeyInput] = useState('');
   const [keySaving, setKeySaving] = useState(false);
@@ -60,9 +75,33 @@ export function FactnoteSettingsScreen({
 
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
-      <FactnoteHeader title="設定" backHref="/factnote" />
+      <FactnoteHeader title="設定" />
 
-      <div className="flex-1 overflow-y-auto px-6 pb-safe">
+      <div className="flex-1 overflow-y-auto px-6 pb-4">
+        <Section title="プロフィール（あなたと登場人物について）">
+          <p className="-mt-1 mb-2 text-[12px] leading-relaxed text-text-secondary">
+            誰が「自分」で、相手や家族をどう呼ぶかをAIに伝えます。録音の話者ラベルが「A / B」ではなく「私 / 妻」のような呼び名になり、分析での自分側・相手側の判断も正確になります。AI処理のときだけ送信され、サーバーには保存されません。
+          </p>
+          <AutoTextarea
+            value={profileDraft}
+            onChange={setProfileDraft}
+            ariaLabel="プロフィール"
+            className="min-h-[120px] w-full resize-none rounded-card border border-border bg-surface px-4 py-3 text-[14px] leading-[1.8] text-text placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          {!profileDraft.trim() && (
+            <pre className="mt-2 whitespace-pre-wrap rounded-card bg-surface px-3 py-2 font-sans text-[12px] leading-relaxed text-text-tertiary">
+              {FACTNOTE_PROFILE_PLACEHOLDER}
+            </pre>
+          )}
+          <button
+            onClick={() => onSaveProfile(profileDraft)}
+            disabled={busy || profileDraft === profileMarkdown}
+            className="mt-2 h-11 w-full rounded-full bg-accent text-[14px] font-semibold text-accent-on disabled:opacity-40"
+          >
+            プロフィールを保存
+          </button>
+        </Section>
+
         <Section title="Gemini APIキー">
           <div className="rounded-card border border-border px-4 py-3">
             <div className="flex items-center gap-2 text-[14px]">
@@ -102,36 +141,32 @@ export function FactnoteSettingsScreen({
           </div>
         </Section>
 
-        <Section title="長期分析">
-          <div className="space-y-2">
-            <Link
-              href="/factnote/carte"
-              className="flex min-h-[48px] items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14px] font-medium active:opacity-70"
-            >
-              <UsersIcon width={18} height={18} className="text-accent" />
-              客観カルテ（人物の統合・別名管理）
-            </Link>
-            <Link
-              href="/factnote/memos"
-              className="flex min-h-[48px] items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14px] font-medium active:opacity-70"
-            >
-              <HeartIcon width={18} height={18} className="text-accent" />
-              未来の自分からのメモ
-            </Link>
-          </div>
-        </Section>
-
         <Section title="バックアップ">
-          <button
-            onClick={onExportJson}
-            disabled={busy}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-card border border-border bg-surface text-[14px] font-medium active:opacity-70 disabled:opacity-40"
-          >
-            <DownloadIcon width={18} height={18} />
-            すべての記録をJSONでエクスポート
-          </button>
+          <div className="space-y-2">
+            {canShare && (
+              <button
+                onClick={onShareJson}
+                disabled={busy}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-[14px] font-semibold text-accent-on shadow-cta active:opacity-90 disabled:opacity-40"
+              >
+                <ShareIcon width={18} height={18} />
+                共有して保存（iCloud Driveなど）
+              </button>
+            )}
+            <button
+              onClick={onExportJson}
+              disabled={busy}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-card border border-border bg-surface text-[14px] font-medium active:opacity-70 disabled:opacity-40"
+            >
+              <DownloadIcon width={18} height={18} />
+              すべての記録をJSONでエクスポート
+            </button>
+          </div>
           <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
-            記録は端末内にのみ保存されます。端末の空き容量が減るとブラウザが保存データを削除することがあるため、定期的なエクスポートをおすすめします。
+            記録は端末内にのみ保存されます。
+            {canShare
+              ? '「共有して保存」→「"ファイル"に保存」→ iCloud Drive を選ぶと、iCloudにバックアップできます（自動保存はブラウザアプリの制約でできないため、週1回程度の手動バックアップをおすすめします）。'
+              : '端末の空き容量が減るとブラウザが保存データを削除することがあるため、定期的なエクスポートをおすすめします。'}
           </p>
         </Section>
 
@@ -183,6 +218,7 @@ export function FactnoteSettingsScreen({
           {FACTNOTE_APP_NAME} — {FACTNOTE_APP_TAGLINE}
         </p>
       </div>
+      <FactnoteTabBar />
     </div>
   );
 }

@@ -174,3 +174,23 @@ export function applyAnalysisResult(
     updatedAt: now.toISOString(),
   };
 }
+
+/** 保存済みレコードの補足情報をAI分析用コンテキストへ変換する（詳細画面からの分析用）。 */
+export function recordToContext(record: IncidentRecord): IncidentContext {
+  return {
+    occurredAt: record.occurredAt
+      ? new Date(record.occurredAt).toLocaleString('ja-JP')
+      : undefined,
+    location: record.location,
+    people: record.people.length > 0 ? record.people.map((p) => p.displayName) : undefined,
+    childrenPresent:
+      record.childrenPresent === 'yes'
+        ? record.childImpactTags[0] || '同席していた'
+        : record.childrenPresent === 'no'
+          ? 'いなかった'
+          : record.childrenPresent === 'unknown'
+            ? '不明'
+            : undefined,
+    emotions: record.emotions.length > 0 ? record.emotions : undefined,
+  };
+}

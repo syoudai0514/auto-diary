@@ -28,22 +28,42 @@ export function PermissionScreen({ onRetry, onBack }: { onRetry: () => void; onB
   );
 }
 
-/** 文字起こし・生成の進行中画面。 */
+/** 文字起こし・生成の進行中画面。secondary はバックグラウンド継続などの任意アクション。 */
 export function ProcessingScreen({
   title,
   subtitle,
   onCancel,
+  secondaryLabel,
+  onSecondary,
+  note,
 }: {
   title: string;
   subtitle: string;
   onCancel: () => void;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
+  note?: string;
 }) {
   return (
     <CenterScreen>
       <div className="mb-6 h-16 w-16 animate-spin360 rounded-full border-[3px] border-border border-t-accent" />
       <h1 className="text-[18px] font-bold">{title}</h1>
       <p className="mt-2 text-[13.5px] text-text-secondary">{subtitle}</p>
-      <button onClick={onCancel} className="mt-8 min-h-[44px] text-[14px] text-text-secondary">
+      {onSecondary && secondaryLabel && (
+        <button
+          onClick={onSecondary}
+          className="mt-7 flex h-12 w-full max-w-[280px] items-center justify-center rounded-full border border-border bg-surface text-[14.5px] font-medium text-text active:opacity-70"
+        >
+          {secondaryLabel}
+        </button>
+      )}
+      {note && (
+        <p className="mt-3 max-w-[280px] text-[11.5px] leading-relaxed text-text-tertiary">{note}</p>
+      )}
+      <button
+        onClick={onCancel}
+        className={`min-h-[44px] text-[14px] text-text-secondary ${onSecondary ? 'mt-2' : 'mt-8'}`}
+      >
         キャンセル
       </button>
     </CenterScreen>

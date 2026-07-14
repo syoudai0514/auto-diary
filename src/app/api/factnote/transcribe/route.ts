@@ -51,6 +51,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'no_audio' }, { status: 400 });
   }
 
+  // プロフィール（話者ラベルの手がかり）。長すぎる場合は切り詰める
+  const peopleContextRaw = form.get('peopleContext');
+  const peopleContext =
+    typeof peopleContextRaw === 'string' && peopleContextRaw.trim()
+      ? peopleContextRaw.slice(0, 2000)
+      : undefined;
+
   const limit = maxAudioBytes();
   if (file.size > limit) {
     return NextResponse.json(
@@ -83,7 +90,7 @@ export async function POST(req: Request) {
         {
           role: 'user',
           parts: [
-            { text: buildFactnoteTranscribePrompt() },
+            { text: buildFactnoteTranscribePrompt(peopleContext) },
             { inlineData: { mimeType, data: base64 } },
           ],
         },

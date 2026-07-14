@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { IncidentRecord } from '@/lib/factnote/types';
 import { FactnoteHeader, RecordRow } from './common';
+import { FactnoteTabBar } from './TabBar';
 
 type Filter = 'all' | 'positive' | 'conflict' | 'repair' | 'unanalyzed';
 
@@ -38,7 +39,7 @@ export function FactnoteRecordsScreen({ records }: { records: IncidentRecord[] }
 
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
-      <FactnoteHeader title="記録一覧" backHref="/factnote" />
+      <FactnoteHeader title="記録" />
 
       <div className="px-6 pt-4">
         <input
@@ -66,7 +67,7 @@ export function FactnoteRecordsScreen({ records }: { records: IncidentRecord[] }
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-safe">
+      <div className="flex-1 overflow-y-auto px-6 pb-4">
         {filtered.length === 0 ? (
           <div className="mt-24 text-center text-[14px] text-text-tertiary">
             {records.length === 0 ? 'まだ記録がありません。' : '条件に合う記録がありません。'}
@@ -79,6 +80,7 @@ export function FactnoteRecordsScreen({ records }: { records: IncidentRecord[] }
           </ul>
         )}
       </div>
+      <FactnoteTabBar />
     </div>
   );
 }

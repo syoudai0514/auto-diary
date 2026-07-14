@@ -68,15 +68,17 @@ export interface GenerateFactnoteDiaryOptions {
   mode: DiaryMode;
   sourceText: string;
   analysisSummary?: string;
+  /** プロフィール（登場人物の呼び方の判断材料）。 */
+  peopleContext?: string;
   model: string;
   maxRetries?: number;
 }
 
 export async function generateFactnoteDiary(
   ai: GoogleGenAI,
-  { mode, sourceText, analysisSummary, model, maxRetries = 2 }: GenerateFactnoteDiaryOptions,
+  { mode, sourceText, analysisSummary, peopleContext, model, maxRetries = 2 }: GenerateFactnoteDiaryOptions,
 ): Promise<FactnoteDiary> {
-  const system = buildFactnoteDiarySystemPrompt(mode);
+  const system = buildFactnoteDiarySystemPrompt(mode, peopleContext);
   const user = buildFactnoteDiaryUserPrompt(sourceText, analysisSummary);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

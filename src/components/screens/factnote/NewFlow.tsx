@@ -3,32 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRecorder, extForMime, hasRecorderSupport } from '@/hooks/useRecorder';
-import { expandToChunks, MAX_CLIENT_AUDIO_BYTES } from '@/lib/audioChunk';
 import { withRetryOn429 } from '@/lib/retry';
-import { combineTranscripts } from '@/lib/format';
 import { ApiError } from '@/lib/api';
-import {
-  factnoteAnalyzeApi,
-  factnoteDiaryApi,
-  factnoteTranscribeAudio,
-  sha256OfBlob,
-  type FactnoteAnalyzeResult,
-} from '@/lib/factnote/api';
+import { factnoteDiaryApi, type FactnoteAnalyzeResult } from '@/lib/factnote/api';
 import {
   deleteAttachmentBlob,
-  getCachedTranscript,
   getRecord,
   listFutureMemos,
   listRecords,
   newFactnoteId,
   saveAttachmentBlob,
   saveRecord,
-  setCachedTranscript,
 } from '@/lib/factnote/db';
 import { conflictsOnSameDay } from '@/lib/factnote/aggregate';
-import { matchMemos } from '@/lib/factnote/memoMatch';
 import {
-  applyAnalysisResult,
+  cancelFactnoteJob,
+  startAnalyzeJob,
+  startTranscribeJob,
+  subscribeFactnoteJobs,
+} from '@/lib/factnote/jobs';
+import { matchMemos } from '@/lib/factnote/memoMatch';
+import { loadFactnoteProfile, profileToPeopleContext } from '@/lib/factnote/profile';
+import {
   applySupplement,
   createEmptyRecord,
   emptySupplement,
@@ -124,8 +120,51 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   const recordRef = useRef<IncidentRecord | null>(null);
   const generatedDiaryRef = useRef<{ title: string; body: string } | null>(null);
   const pendingBlobsRef = useRef<{ blob: Blob; filename: string }[]>([]);
-  const cancelledRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** プロフィール（話者ラベル・自分側/相手側の判断材料としてAIへ渡す）。 */
+  const peopleContextRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    loadFactnoteProfile().then((p) => {
+      peopleContextRef.current = profileToPeopleContext(p);
+    });
+  }, []);
+
+  // バックグラウンドジョブ（文字起こし・分析）の進捗・完了を受けて画面を進める。
+  // 画面を離れてもジョブ自体は継続し、結果はIndexedDBへ保存される
+  useEffect(() => {
+    return subscribeFactnoteJobs((event) => {
+      const current = recordRef.current;
+      if (!current || event.job.recordId !== current.id) return;
+      if (event.type === 'progress') {
+        setIsPreparingAudio(event.job.preparing);
+        setProgress(event.job.progress);
+        return;
+      }
+      if (event.type === 'done') {
+        recordRef.current = event.record;
+        if (event.job.kind === 'transcribe') {
+          const transcript = event.transcript ?? '';
+          if (!transcript.trim()) {
+            setStep('empty');
+            return;
+          }
+          setEditedTranscript(transcript);
+          setStep('review');
+        } else if (event.result) {
+          setAnalysisResult(event.result);
+          void showMemosAfterAnalysis(event.record, event.result);
+          setStep('result');
+        }
+        return;
+      }
+      setErrorMsg(event.message);
+      setRetryTarget(event.job.kind);
+      setStep('error');
+    });
+    // showMemosAfterAnalysis は state セッターのみに依存するため購読は初回のみでよい
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ensureRecord = useCallback((): IncidentRecord => {
     if (!recordRef.current) recordRef.current = createEmptyRecord(SOURCE_TYPE[mode]);
@@ -192,14 +231,13 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     void transcribeBlobs(chosen.map((f) => ({ blob: f as Blob, filename: f.name || 'audio' })));
   }
 
-  // --- 文字起こし --------------------------------------------------------------
+  // --- 文字起こし（バックグラウンドジョブ） -------------------------------------
   async function transcribeBlobs(rawItems: { blob: Blob; filename: string }[], durationSec?: number) {
     pendingBlobsRef.current = rawItems;
-    cancelledRef.current = false;
     setStep('transcribing');
     setProgress({ current: 0, total: 0 });
 
-    // 1) 原本（音声Blob）を先に保存する。以降どこで失敗しても原本は残る（依頼書 §6.3）
+    // 原本（音声Blob）を先に保存する。以降どこで失敗しても原本は残る（依頼書 §6.3）
     let record = ensureRecord();
     if (record.attachments.length === 0) {
       try {
@@ -239,75 +277,27 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
         setStep('error');
         return;
       }
+    } else {
+      record = await persist((r) => ({ ...r, status: 'transcribing' }));
     }
 
-    // 2) チャンク分割（直列。依頼書 §2-2）
-    let expanded: { blob: Blob; filename: string }[][];
-    const needsExpansion = rawItems.some((it) => it.blob.size > MAX_CLIENT_AUDIO_BYTES);
-    try {
-      if (needsExpansion) setIsPreparingAudio(true);
-      expanded = [];
-      for (const it of rawItems) {
-        expanded.push(await expandToChunks(it.blob, it.filename));
-      }
-    } catch {
-      setErrorMsg('音声の分割処理に失敗しました。この端末では対応していない可能性があります。');
-      setRetryTarget(null);
-      setStep('error');
-      return;
-    } finally {
-      setIsPreparingAudio(false);
-    }
-
-    // 3) 原本ごとに: キャッシュ確認 → チャンクを直列で文字起こし（依頼書 §22.2）
-    const totalChunks = expanded.reduce((acc, chunks) => acc + chunks.length, 0);
-    setProgress({ current: 0, total: totalChunks });
-    const sourceTexts: string[] = [];
-    let done = 0;
-    try {
-      for (let i = 0; i < rawItems.length; i++) {
-        const hash = await sha256OfBlob(rawItems[i].blob).catch(() => null);
-        const cached = hash ? await getCachedTranscript(hash) : undefined;
-        if (cached) {
-          done += expanded[i].length;
-          setProgress({ current: done, total: totalChunks });
-          sourceTexts.push(cached);
-          continue;
-        }
-        const parts: string[] = [];
-        for (const chunk of expanded[i]) {
-          if (cancelledRef.current) return;
-          done += 1;
-          setProgress({ current: done, total: totalChunks });
-          parts.push(await withRetryOn429(() => factnoteTranscribeAudio(chunk.blob, chunk.filename)));
-        }
-        const combined = combineTranscripts(parts);
-        sourceTexts.push(combined);
-        if (hash && combined) await setCachedTranscript(hash, combined);
-      }
-    } catch (err) {
-      await persist((r) => ({ ...r, status: 'draft' }));
-      handleApiError(err, '文字起こしに失敗しました。', 'transcribe');
-      return;
-    }
-    if (cancelledRef.current) return;
-
-    const transcript = combineTranscripts(sourceTexts);
-    if (!transcript.trim()) {
-      await persist((r) => ({ ...r, status: 'draft' }));
-      setStep('empty');
-      return;
-    }
-
-    // 4) 文字起こしを必ず保存してから次へ（依頼書 §11）
-    await persist((r) => ({ ...r, transcript, status: 'draft' }));
-    setEditedTranscript(transcript);
-    setStep('review');
+    // 以降はバックグラウンドジョブ。進捗・完了は subscribeFactnoteJobs で受け取る
+    startTranscribeJob({
+      recordId: record.id,
+      items: rawItems,
+      peopleContext: peopleContextRef.current,
+    });
   }
 
   function cancelTranscribing() {
-    cancelledRef.current = true;
+    const record = recordRef.current;
+    if (record) cancelFactnoteJob(record.id);
     void persist((r) => ({ ...r, status: 'draft' })).finally(() => router.push('/factnote'));
+  }
+
+  /** 処理を続けたままホームへ戻る（完了すると記録に反映される）。 */
+  function continueInBackground() {
+    router.push('/factnote');
   }
 
   // --- 確認・修正 → 補足情報 ---------------------------------------------------
@@ -362,7 +352,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     setStep('supplement');
   }
 
-  // --- 分析 ---------------------------------------------------------------------
+  // --- 分析（バックグラウンドジョブ） --------------------------------------------
   async function runAnalyze() {
     const record = await persist((r) => applySupplement(r, supplement));
     const sourceText = sourceTextOf(record);
@@ -374,37 +364,33 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     }
     setStep('analyzing');
     await persist((r) => ({ ...r, status: 'analyzing' }));
+    startAnalyzeJob({
+      recordId: record.id,
+      context: supplementToContext(supplement),
+      peopleContext: peopleContextRef.current,
+    });
+  }
+
+  /** 記録保存直後の未来メモ表示（追加依頼 §18.1）。安全フラグがある場合は出さない（§25）。 */
+  async function showMemosAfterAnalysis(saved: IncidentRecord, result: FactnoteAnalyzeResult) {
+    if (result.analysis.safetyFlags.length > 0) {
+      setMatchedMemos([]);
+      return;
+    }
     try {
-      const result = await withRetryOn429(() =>
-        factnoteAnalyzeApi(sourceText, supplementToContext(supplement)),
-      );
-      setAnalysisResult(result);
-      const saved = await persist((r) => applyAnalysisResult(r, result));
-      // 記録保存直後の未来メモ表示（追加依頼 §18.1）。
-      // 安全上の危険がある場合は出さず、安全確認カード（AnalysisView）を優先する（§25）
-      if (result.analysis.safetyFlags.length === 0) {
-        try {
-          const [memos, all] = await Promise.all([listFutureMemos(), listRecords()]);
-          const matched = matchMemos(memos, {
-            record: saved,
-            text: sourceText,
-            emotions: supplement.emotions,
-            conflictsToday: conflictsOnSameDay(all, new Date()),
-            userIssueCount: result.analysis.userImprovementPoints.length,
-            otherIssueCount: result.analysis.otherPartyProblemPoints.length,
-          }).slice(0, 2);
-          for (const m of matched) await markMemoShown(m, saved.id);
-          setMatchedMemos(matched);
-        } catch {
-          setMatchedMemos([]);
-        }
-      } else {
-        setMatchedMemos([]);
-      }
-      setStep('result');
-    } catch (err) {
-      await persist((r) => ({ ...r, status: 'draft' }));
-      handleApiError(err, '分析に失敗しました。', 'analyze');
+      const [memos, all] = await Promise.all([listFutureMemos(), listRecords()]);
+      const matched = matchMemos(memos, {
+        record: saved,
+        text: sourceTextOf(saved),
+        emotions: saved.emotions,
+        conflictsToday: conflictsOnSameDay(all, new Date()),
+        userIssueCount: result.analysis.userImprovementPoints.length,
+        otherIssueCount: result.analysis.otherPartyProblemPoints.length,
+      }).slice(0, 2);
+      for (const m of matched) await markMemoShown(m, saved.id);
+      setMatchedMemos(matched);
+    } catch {
+      setMatchedMemos([]);
     }
   }
 
@@ -426,6 +412,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
           mode,
           sourceTextOf(record),
           record.analysis ? analysisSummaryForDiary(record.analysis) : undefined,
+          peopleContextRef.current,
         ),
       );
       generatedDiaryRef.current = diary;
@@ -579,6 +566,9 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
               ? `文字起こし中…（${progress.current}/${progress.total}）`
               : 'そのままお待ちください'
         }
+        secondaryLabel="バックグラウンドで続ける"
+        onSecondary={continueInBackground}
+        note="アプリ内なら他の画面に移動しても処理は続き、完了すると記録に反映されます。画面ロックや他のアプリへの切り替え中は中断されることがあります。"
         onCancel={cancelTranscribing}
       />
     );
@@ -642,7 +632,12 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
       <ProcessingScreen
         title="事実と解釈を分けています"
         subtitle="確認できる事実・本人の認識・推測・不明点を整理しています"
+        secondaryLabel="バックグラウンドで続ける"
+        onSecondary={continueInBackground}
+        note="アプリ内なら他の画面に移動しても処理は続き、完了すると記録に反映されます。"
         onCancel={() => {
+          const record = recordRef.current;
+          if (record) cancelFactnoteJob(record.id);
           void persist((r) => ({ ...r, status: 'draft' })).finally(() => router.push('/factnote'));
         }}
       />

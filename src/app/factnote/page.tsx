@@ -10,6 +10,7 @@ import {
   requestPersistentStorage,
   type PersistState,
 } from '@/lib/factnote/db';
+import { subscribeFactnoteJobs } from '@/lib/factnote/jobs';
 import { dueReminders } from '@/lib/factnote/memoMatch';
 import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 
@@ -35,8 +36,19 @@ export default function FactnoteHomePage() {
       setLastBackupAt(backup);
       setDueMemos(dueReminders(memos));
     })();
+    // バックグラウンドの文字起こし・分析が完了したら最近の記録へ反映する
+    const unsubscribe = subscribeFactnoteJobs((event) => {
+      if (event.type !== 'progress') {
+        listRecords()
+          .then((list) => {
+            if (!cancelled) setRecords(list);
+          })
+          .catch(() => {});
+      }
+    });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 

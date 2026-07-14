@@ -274,3 +274,13 @@ export function ShieldIcon(p: SVGProps<SVGSVGElement>) {
     </svg>
   );
 }
+
+export function HomeIcon(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 9.5 12 3l9 6.5" />
+      <path d="M5 8.5V21h14V8.5" />
+      <path d="M9 21v-6h6v6" />
+    </svg>
+  );
+}

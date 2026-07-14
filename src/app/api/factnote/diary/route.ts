@@ -38,11 +38,13 @@ export async function POST(req: Request) {
   let mode: unknown;
   let sourceText: unknown;
   let analysisSummary: unknown;
+  let peopleContextRaw: unknown;
   try {
     const body = await req.json();
     mode = body?.mode;
     sourceText = body?.sourceText;
     analysisSummary = body?.analysisSummary;
+    peopleContextRaw = body?.peopleContext;
   } catch {
     return NextResponse.json({ error: 'bad_request' }, { status: 400 });
   }
@@ -75,6 +77,10 @@ export async function POST(req: Request) {
       mode: mode as DiaryMode,
       sourceText,
       analysisSummary: typeof analysisSummary === 'string' ? analysisSummary : undefined,
+      peopleContext:
+        typeof peopleContextRaw === 'string' && peopleContextRaw.trim()
+          ? peopleContextRaw.slice(0, 2000)
+          : undefined,
       model: chatModel(),
     });
     return NextResponse.json({ diary });

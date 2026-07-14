@@ -1,20 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  BookIcon,
-  FileTextIcon,
-  MicIcon,
-  ScaleIcon,
-  SettingsIcon,
-  UploadIcon,
-  UsersIcon,
-} from '@/components/icons';
+import { FileTextIcon, MicIcon, SettingsIcon, UploadIcon } from '@/components/icons';
 import { FACTNOTE_APP_NAME } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
 import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 import { FactnoteHeader, RecordRow, formatRecordDate } from './common';
 import { FutureMemoCard } from './FutureMemoCard';
+import { FactnoteTabBar } from './TabBar';
+
+/** これ以上バックアップが空くと注意を出す期間。 */
+const BACKUP_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * 事実ノートのホーム（依頼書 §20）。メイン入力を最も目立たせ、
@@ -36,6 +32,9 @@ export function FactnoteHomeScreen({
 }) {
   const today = new Date();
   const recent = records.slice(0, 5);
+  const backupStale =
+    records.length > 0 &&
+    (!lastBackupAt || today.getTime() - Date.parse(lastBackupAt) > BACKUP_STALE_MS);
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
       <FactnoteHeader
@@ -84,51 +83,29 @@ export function FactnoteHomeScreen({
           </ul>
         )}
 
-        {/* 長期分析への入口（追加依頼 §29。ホームは情報過多にしない） */}
-        {records.length > 0 && (
-          <div className="mt-6 space-y-2">
-            <Link
-              href="/factnote/carte"
-              className="flex min-h-[56px] items-center gap-3 rounded-card border border-border bg-surface px-4 active:opacity-70"
-            >
-              <UsersIcon width={20} height={20} className="shrink-0 text-accent" />
-              <span className="min-w-0">
-                <span className="block text-[14.5px] font-semibold">客観カルテ</span>
-                <span className="block text-[12px] text-text-tertiary">関係を長期的に見る</span>
-              </span>
-            </Link>
-            <Link
-              href={`/factnote/flatcheck?recordId=${records[0].id}`}
-              className="flex min-h-[56px] items-center gap-3 rounded-card border border-border bg-surface px-4 active:opacity-70"
-            >
-              <ScaleIcon width={20} height={20} className="shrink-0 text-accent" />
-              <span className="min-w-0">
-                <span className="block text-[14.5px] font-semibold">フラットチェック</span>
-                <span className="block truncate text-[12px] text-text-tertiary">
-                  直近の記録「{records[0].title || '無題の記録'}」を過去と比較する
-                </span>
-              </span>
-            </Link>
-          </div>
-        )}
-
         {/* バックアップ状況（iOSのIndexedDB退避リスクを正直に伝える。依頼書 §21/§26） */}
-        <div className="mb-4 mt-6 rounded-card border border-border px-4 py-3 text-[12px] leading-relaxed text-text-secondary">
-          <div>
-            最終バックアップ:{' '}
-            {lastBackupAt ? formatRecordDate(lastBackupAt) : 'まだありません'}
-          </div>
-          {persistState !== 'granted' && (
-            <div className="mt-1 text-text-tertiary">
-              端末の空き容量が減ると、ブラウザが保存データを削除することがあります。設定からエクスポートしておくと安全です。
+        {(backupStale || persistState !== 'granted') && records.length > 0 && (
+          <Link
+            href="/factnote/settings"
+            className={`mb-4 mt-6 block rounded-card px-4 py-3 text-[12px] leading-relaxed active:opacity-70 ${
+              backupStale ? 'bg-warning-soft' : 'border border-border text-text-secondary'
+            }`}
+          >
+            <div className="font-medium">
+              最終バックアップ: {lastBackupAt ? formatRecordDate(lastBackupAt) : 'まだありません'}
             </div>
-          )}
-        </div>
+            <div className="mt-0.5 text-text-secondary">
+              {backupStale
+                ? 'バックアップが1週間以上前です。設定から保存しておくと安心です。'
+                : '端末の空き容量が減ると、ブラウザが保存データを削除することがあります。'}
+            </div>
+          </Link>
+        )}
       </div>
 
-      {/* フッター: 親指到達域のメイン入力（依頼書 §8） */}
-      <div className="sticky bottom-0 mt-auto bg-gradient-to-t from-bg via-bg to-transparent px-6 pb-safe pt-6">
-        <div className="flex flex-col items-center gap-2 pb-3">
+      {/* フッター: 親指到達域のメイン入力（依頼書 §8）+ タブバー */}
+      <div className="sticky bottom-0 mt-auto bg-gradient-to-t from-bg via-bg to-transparent">
+        <div className="flex flex-col items-center gap-2 px-6 pb-3 pt-6">
           <div className="flex gap-2">
             <Link
               href="/factnote/new?mode=text"
@@ -146,21 +123,15 @@ export function FactnoteHomeScreen({
             </Link>
           </div>
           <Link
-            href="/factnote/records"
-            className="flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-[14px] font-medium text-text active:opacity-70"
-          >
-            <BookIcon width={18} height={18} />
-            記録一覧
-          </Link>
-          <Link
             href="/factnote/new?mode=record"
             aria-label="今のことを話す"
-            className="flex h-[76px] w-[76px] items-center justify-center rounded-[38px] bg-accent text-accent-on shadow-cta transition active:scale-[1.08]"
+            className="flex h-[68px] w-[68px] items-center justify-center rounded-[34px] bg-accent text-accent-on shadow-cta transition active:scale-[1.08]"
           >
-            <MicIcon width={30} height={30} />
+            <MicIcon width={28} height={28} />
           </Link>
           <span className="text-[12px] text-text-tertiary">今のことを話す</span>
         </div>
+        <FactnoteTabBar />
       </div>
     </div>
   );

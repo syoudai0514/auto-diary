@@ -9,6 +9,7 @@ import {
   META_LAST_BACKUP_AT,
   setMeta,
 } from './db';
+import { loadFactnoteProfile, type FactnoteProfile } from './profile';
 import {
   FACTNOTE_SCHEMA_VERSION,
   type FlatCheckResult,
@@ -32,6 +33,8 @@ export interface FactnoteExport {
   persons?: PersonProfile[];
   futureMemos?: FutureSelfMemo[];
   flatChecks?: FlatCheckResult[];
+  /** プロフィール（自分の立場・家族構成）。 */
+  profile?: FactnoteProfile;
 }
 
 /** エクスポート用のデータを組み立てる（純粋関数。テスト対象）。 */
@@ -42,6 +45,7 @@ export function buildExportPayload(
     persons?: PersonProfile[];
     futureMemos?: FutureSelfMemo[];
     flatChecks?: FlatCheckResult[];
+    profile?: FactnoteProfile;
   },
 ): FactnoteExport {
   return {
@@ -53,6 +57,7 @@ export function buildExportPayload(
     persons: extras?.persons ?? [],
     futureMemos: extras?.futureMemos ?? [],
     flatChecks: extras?.flatChecks ?? [],
+    profile: extras?.profile,
   };
 }
 
@@ -61,21 +66,35 @@ export function exportFileName(now: Date = new Date()): string {
   return `${FACTNOTE_EXPORT_PREFIX}-export-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
 }
 
-/** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
-export async function exportAllAsJson(): Promise<number> {
-  const [records, persons, futureMemos, flatChecks] = await Promise.all([
+async function collectExportBlob(): Promise<{ blob: Blob; count: number; fileName: string }> {
+  const [records, persons, futureMemos, flatChecks, profile] = await Promise.all([
     listRecords(),
     listPersons().catch(() => []),
     listFutureMemos().catch(() => []),
     listFlatChecks().catch(() => []),
+    loadFactnoteProfile().catch(() => undefined),
   ]);
-  const payload = buildExportPayload(records, new Date(), { persons, futureMemos, flatChecks });
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const payload = buildExportPayload(records, new Date(), {
+    persons,
+    futureMemos,
+    flatChecks,
+    profile,
+  });
+  return {
+    blob: new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    count: records.length,
+    fileName: exportFileName(),
+  };
+}
+
+/** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
+export async function exportAllAsJson(): Promise<number> {
+  const { blob, count, fileName } = await collectExportBlob();
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.download = exportFileName();
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -84,5 +103,35 @@ export async function exportAllAsJson(): Promise<number> {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
   await setMeta(META_LAST_BACKUP_AT, new Date().toISOString());
-  return records.length;
+  return count;
+}
+
+/** この端末でファイル共有（共有シート）が使えるか。 */
+export function canShareBackup(): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return false;
+  try {
+    const probe = new File(['{}'], 'probe.json', { type: 'application/json' });
+    return typeof navigator.canShare !== 'function' || navigator.canShare({ files: [probe] });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 共有シート経由のバックアップ（iOSでは「"ファイル"に保存」→ iCloud Drive を選べる）。
+ * 自動でiCloudへ書き込むAPIはブラウザに存在しないため、これが最短の手段。
+ * ユーザーが共有をキャンセルした場合は false を返し、バックアップ日時は更新しない。
+ */
+export async function shareBackupJson(): Promise<{ shared: boolean; count: number }> {
+  const { blob, count, fileName } = await collectExportBlob();
+  const file = new File([blob], fileName, { type: 'application/json' });
+  try {
+    await navigator.share({ files: [file], title: '事実ノートのバックアップ' });
+  } catch (e) {
+    // キャンセル（AbortError）や非対応。ダウンロードにはフォールバックしない
+    if (e instanceof DOMException && e.name === 'AbortError') return { shared: false, count };
+    throw e;
+  }
+  await setMeta(META_LAST_BACKUP_AT, new Date().toISOString());
+  return { shared: true, count };
 }
