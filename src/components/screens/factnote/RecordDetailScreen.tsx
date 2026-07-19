@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
+import { getAttachmentBlob } from '@/lib/factnote/db';
 import {
   DIARY_MODE_LABELS,
   RECORD_SOURCE_LABELS,
@@ -29,20 +30,26 @@ export function FactnoteRecordDetailScreen({
   record,
   pinnedMemos = [],
   analyzing = false,
+  transcribing = false,
   onDelete,
   onUpdate,
   onAnalyze,
+  onTranscribe,
 }: {
   record: IncidentRecord;
   /** この記録に固定された未来メモ。 */
   pinnedMemos?: FutureSelfMemo[];
   /** この記録の分析ジョブが実行中か。 */
   analyzing?: boolean;
+  /** この記録の文字起こしジョブが実行中か。 */
+  transcribing?: boolean;
   onDelete: () => void;
   /** 分類修正・カルテ除外などの更新（永続化は呼び出し側）。 */
   onUpdate: (record: IncidentRecord) => void;
   /** 未分析の記録をバックグラウンドで分析する。 */
   onAnalyze?: () => void;
+  /** 保存済みの音声から文字起こしを（再）実行する。 */
+  onTranscribe?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(record.analysis ? 'analysis' : 'source');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -118,7 +125,9 @@ export function FactnoteRecordDetailScreen({
               )}
             </div>
           ))}
-        {tab === 'transcript' && <TranscriptTab record={record} />}
+        {tab === 'transcript' && (
+          <TranscriptTab record={record} transcribing={transcribing} onTranscribe={onTranscribe} />
+        )}
         {tab === 'source' && <SourceTab record={record} />}
 
         {/* 長期分析への導線と分類の修正（追加依頼 §30） */}
@@ -248,8 +257,39 @@ function DiaryTab({ record }: { record: IncidentRecord }) {
   );
 }
 
-function TranscriptTab({ record }: { record: IncidentRecord }) {
+function TranscriptTab({
+  record,
+  transcribing,
+  onTranscribe,
+}: {
+  record: IncidentRecord;
+  transcribing?: boolean;
+  onTranscribe?: () => void;
+}) {
   if (!record.transcript && !record.correctedTranscript) {
+    // 音声（原本）は保存済みだが文字起こしがまだ無い状態。
+    // 処理が中断されても録音は失われていないので、ここから再実行できる
+    if (record.attachments.length > 0 && onTranscribe) {
+      return (
+        <div className="mt-10 text-center">
+          <p className="text-[14px] leading-relaxed text-text-secondary">
+            録音（原本）は保存されています。
+            <br />
+            文字起こしはまだありません。
+          </p>
+          <button
+            onClick={onTranscribe}
+            disabled={transcribing}
+            className="mt-5 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta disabled:opacity-50"
+          >
+            {transcribing ? '文字起こし中…（他の画面に移動できます）' : '保存済みの音声を文字起こしする'}
+          </button>
+          <p className="mx-auto mt-3 max-w-[280px] text-[11.5px] leading-relaxed text-text-tertiary">
+            バックグラウンドで実行され、完了するとここに反映されます。音声は「原本」タブで再生できます。
+          </p>
+        </div>
+      );
+    }
     return <EmptyTab text="文字起こしはありません。" />;
   }
   return (
@@ -311,7 +351,7 @@ function SourceTab({ record }: { record: IncidentRecord }) {
       )}
 
       {record.attachments.length > 0 && (
-        <Section title="添付ファイル">
+        <Section title="添付ファイル（原本）">
           <ul className="space-y-2">
             {record.attachments.map((a) => (
               <li key={a.id} className="rounded-card border border-border px-4 py-3 text-[13.5px]">
@@ -320,6 +360,9 @@ function SourceTab({ record }: { record: IncidentRecord }) {
                   {a.mimeType} ・ {(a.size / 1024 / 1024).toFixed(1)}MB
                   {a.durationSeconds ? ` ・ ${Math.round(a.durationSeconds)}秒` : ''}
                 </div>
+                {a.mimeType.startsWith('audio/') || a.mimeType.startsWith('video/') ? (
+                  <AudioPlayer attachmentId={a.id} />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -327,6 +370,35 @@ function SourceTab({ record }: { record: IncidentRecord }) {
       )}
     </div>
   );
+}
+
+/** 保存済みBlobを都度 ObjectURL 化して再生する（URLは揮発のため保存しない。§21）。 */
+function AudioPlayer({ attachmentId }: { attachmentId: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    getAttachmentBlob(attachmentId)
+      .then((blob) => {
+        if (!blob) {
+          setMissing(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => setMissing(true));
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachmentId]);
+
+  if (missing) {
+    return <p className="mt-2 text-[12px] text-error">音声データが見つかりませんでした。</p>;
+  }
+  if (!url) return <p className="mt-2 text-[12px] text-text-tertiary">読み込み中…</p>;
+  return <audio controls preload="metadata" src={url} className="mt-2 w-full" />;
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {

@@ -51,11 +51,22 @@ export function hasRecorderSupport(): boolean {
   );
 }
 
+export interface RecorderOptions {
+  /**
+   * 録音中に一定間隔で「ここまでの音声」のBlobを渡す。
+   * タブの強制終了・クラッシュ時にも直近の保存分まで音声を残すための救済用。
+   * コールバック内で IndexedDB 等へ保存することを想定。
+   */
+  onPartial?: (blob: Blob) => void;
+  /** onPartial の呼び出し間隔（ミリ秒。既定 15000）。 */
+  partialIntervalMs?: number;
+}
+
 /**
  * ブラウザマイク録音フック。
  * 録音・一時停止・再開・停止（Blob取得）・経過時間・権限エラーを扱う。
  */
-export function useRecorder() {
+export function useRecorder(options?: RecorderOptions) {
   const [state, setState] = useState<RecorderState>({
     status: 'idle',
     elapsedMs: 0,
@@ -70,6 +81,9 @@ export function useRecorder() {
   const accumulatedRef = useRef<number>(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolveStopRef = useRef<((blob: Blob | null) => void) | null>(null);
+  const optionsRef = useRef<RecorderOptions | undefined>(options);
+  optionsRef.current = options;
+  const partialTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearTick = () => {
     if (tickRef.current) {
@@ -77,6 +91,28 @@ export function useRecorder() {
       tickRef.current = null;
     }
   };
+
+  const clearPartialTimer = () => {
+    if (partialTimerRef.current) {
+      clearInterval(partialTimerRef.current);
+      partialTimerRef.current = null;
+    }
+  };
+
+  const startPartialTimer = useCallback(() => {
+    clearPartialTimer();
+    if (!optionsRef.current?.onPartial) return;
+    const interval = optionsRef.current.partialIntervalMs ?? 15_000;
+    partialTimerRef.current = setInterval(() => {
+      const onPartial = optionsRef.current?.onPartial;
+      if (!onPartial || chunksRef.current.length === 0) return;
+      try {
+        onPartial(new Blob(chunksRef.current, { type: mimeRef.current || 'audio/webm' }));
+      } catch {
+        /* 部分保存の失敗は録音本体に影響させない */
+      }
+    }, interval);
+  }, []);
 
   const stopTracks = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -117,6 +153,7 @@ export function useRecorder() {
       accumulatedRef.current = 0;
       rec.start(250);
       startTick();
+      startPartialTimer();
       setState({ status: 'recording', elapsedMs: 0, error: null });
       return true;
     } catch (err: unknown) {
@@ -124,7 +161,7 @@ export function useRecorder() {
       setState({ status: 'idle', elapsedMs: 0, error: classifyRecorderError(err) });
       return false;
     }
-  }, [startTick]);
+  }, [startTick, startPartialTimer]);
 
   const pause = useCallback(() => {
     const rec = recorderRef.current;
@@ -150,6 +187,7 @@ export function useRecorder() {
     return new Promise((resolve) => {
       const rec = recorderRef.current;
       clearTick();
+      clearPartialTimer();
       if (!rec || rec.state === 'inactive') {
         resolve(null);
         return;
@@ -166,6 +204,7 @@ export function useRecorder() {
   /** 録音を破棄してリセット（Blob は返さない）。 */
   const cancel = useCallback(() => {
     clearTick();
+    clearPartialTimer();
     const rec = recorderRef.current;
     resolveStopRef.current = null;
     if (rec && rec.state !== 'inactive') {
@@ -191,6 +230,7 @@ export function useRecorder() {
   useEffect(() => {
     return () => {
       clearTick();
+      clearPartialTimer();
       stopTracks();
     };
   }, []);

@@ -9,6 +9,7 @@ import { factnoteDiaryApi, type FactnoteAnalyzeResult } from '@/lib/factnote/api
 import {
   deleteAttachmentBlob,
   getRecord,
+  hardDeleteRecord,
   listFutureMemos,
   listRecords,
   newFactnoteId,
@@ -97,7 +98,11 @@ const MODE_TITLES: Record<NewFlowMode, string> = {
  */
 export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   const router = useRouter();
-  const recorder = useRecorder();
+  // 録音中は15秒ごとに「ここまでの音声」を保存し、アプリが落ちても話した内容を残す
+  const recorder = useRecorder({
+    partialIntervalMs: 15_000,
+    onPartial: (blob) => void savePartialRecording(blob),
+  });
 
   const [step, setStep] = useState<Step>(
     mode === 'text' ? 'textInput' : mode === 'record' ? 'recordIntro' : 'filePick',
@@ -173,7 +178,11 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
 
   const persist = useCallback(
     async (mut: (r: IncidentRecord) => IncidentRecord): Promise<IncidentRecord> => {
-      const next = mut({ ...ensureRecord(), updatedAt: new Date().toISOString() });
+      // 必ずDB上の最新を基点に変更を適用する（バックグラウンドジョブ等が
+      // 書き込んだ文字起こし・分析を、古いメモリ上のコピーで上書きしないため）
+      const inMemory = ensureRecord();
+      const base = (await getRecord(inMemory.id).catch(() => undefined)) ?? inMemory;
+      const next = mut({ ...base, updatedAt: new Date().toISOString() });
       recordRef.current = next;
       await saveRecord(next);
       return next;
@@ -212,6 +221,44 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     setStep('recording');
   }
 
+  /** 録音途中の自動保存（クラッシュ・タブ強制終了への備え。依頼書 §8.1）。 */
+  async function savePartialRecording(blob: Blob) {
+    try {
+      const record = ensureRecord();
+      const attId = `${record.id}-rec`;
+      await saveAttachmentBlob(attId, blob);
+      await persist((r) => ({
+        ...r,
+        attachments: r.attachments.some((a) => a.id === attId)
+          ? r.attachments.map((a) => (a.id === attId ? { ...a, size: blob.size } : a))
+          : [
+              ...r.attachments,
+              {
+                id: attId,
+                fileName: `recording-autosave.${extForMime(blob.type || undefined)}`,
+                mimeType: blob.type || 'audio/webm',
+                size: blob.size,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+        evidenceItems:
+          r.evidenceItems.length > 0
+            ? r.evidenceItems
+            : [
+                {
+                  id: newFactnoteId(),
+                  type: 'audio',
+                  attachmentId: attId,
+                  sourceLabel: '音声',
+                  confidence: 'high',
+                },
+              ],
+      }));
+    } catch {
+      /* 自動保存の失敗は録音を妨げない */
+    }
+  }
+
   async function stopRecording() {
     const blob = await recorder.stop();
     const elapsed = recorder.elapsedMs;
@@ -239,7 +286,34 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
 
     // 原本（音声Blob）を先に保存する。以降どこで失敗しても原本は残る（依頼書 §6.3）
     let record = ensureRecord();
-    if (record.attachments.length === 0) {
+    const partialId = `${record.id}-rec`;
+    const hasPartial = record.attachments.some((a) => a.id === partialId);
+    if (hasPartial && rawItems.length === 1) {
+      // 録音の途中保存がある場合は、同じ添付を最終音声で上書きする
+      try {
+        await saveAttachmentBlob(partialId, rawItems[0].blob);
+        record = await persist((r) => ({
+          ...r,
+          status: 'transcribing',
+          attachments: r.attachments.map((a) =>
+            a.id === partialId
+              ? {
+                  ...a,
+                  fileName: rawItems[0].filename,
+                  mimeType: rawItems[0].blob.type || a.mimeType,
+                  size: rawItems[0].blob.size,
+                  durationSeconds: durationSec ?? a.durationSeconds,
+                }
+              : a,
+          ),
+        }));
+      } catch {
+        setErrorMsg('端末への保存に失敗しました。空き容量を確認してください。');
+        setRetryTarget(null);
+        setStep('error');
+        return;
+      }
+    } else if (record.attachments.length === 0) {
       try {
         const attachments = [...record.attachments];
         for (const item of rawItems) {
@@ -292,7 +366,10 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   function cancelTranscribing() {
     const record = recordRef.current;
     if (record) cancelFactnoteJob(record.id);
-    void persist((r) => ({ ...r, status: 'draft' })).finally(() => router.push('/factnote'));
+    // 直前にジョブが完了していた場合は完了状態を巻き戻さない
+    void persist((r) =>
+      r.status === 'transcribing' || r.status === 'analyzing' ? { ...r, status: 'draft' } : r,
+    ).finally(() => router.push('/factnote'));
   }
 
   /** 処理を続けたままホームへ戻る（完了すると記録に反映される）。 */
@@ -519,6 +596,12 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
         onStop={() => void stopRecording()}
         onCancel={() => {
           recorder.cancel();
+          // ユーザーが明示的に破棄した場合、途中保存だけの空レコードは残さない
+          const record = recordRef.current;
+          if (record && !record.rawText && !record.transcript && record.diaryVersions.length === 0) {
+            recordRef.current = null;
+            void hardDeleteRecord(record.id);
+          }
           setStep('recordIntro');
         }}
       />
@@ -638,7 +721,10 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
         onCancel={() => {
           const record = recordRef.current;
           if (record) cancelFactnoteJob(record.id);
-          void persist((r) => ({ ...r, status: 'draft' })).finally(() => router.push('/factnote'));
+          // 直前にジョブが完了していた場合は完了状態を巻き戻さない
+          void persist((r) =>
+            r.status === 'transcribing' || r.status === 'analyzing' ? { ...r, status: 'draft' } : r,
+          ).finally(() => router.push('/factnote'));
         }}
       />
     );

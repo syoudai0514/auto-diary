@@ -10,7 +10,7 @@ import {
   requestPersistentStorage,
   type PersistState,
 } from '@/lib/factnote/db';
-import { subscribeFactnoteJobs } from '@/lib/factnote/jobs';
+import { recoverStaleProcessingRecords, subscribeFactnoteJobs } from '@/lib/factnote/jobs';
 import { dueReminders } from '@/lib/factnote/memoMatch';
 import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 
@@ -25,6 +25,8 @@ export default function FactnoteHomePage() {
     (async () => {
       // iOSのIndexedDB退避対策として初回に永続化を要求する（依頼書 §21）
       const persist = await requestPersistentStorage();
+      // タブ強制終了などで処理中のまま固まった記録を復旧する（データは保存済み）
+      await recoverStaleProcessingRecords().catch(() => {});
       const [list, backup, memos] = await Promise.all([
         listRecords().catch(() => []),
         getMeta<string>(META_LAST_BACKUP_AT).catch(() => undefined),

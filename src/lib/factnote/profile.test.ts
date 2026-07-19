@@ -14,6 +14,7 @@ import { buildFactnoteDiarySystemPrompt } from './prompts/diary';
 describe('事実ノートのプロフィール', () => {
   beforeEach(() => {
     (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+    localStorage.clear();
   });
 
   it('保存して読み出せる（未保存時は空）', async () => {
@@ -32,6 +33,17 @@ describe('事実ノートのプロフィール', () => {
   it('profileToPeopleContext は空なら undefined を返す', () => {
     expect(profileToPeopleContext({ markdown: '  ', updatedAt: '' })).toBeUndefined();
     expect(profileToPeopleContext({ markdown: '私は夫', updatedAt: '' })).toBe('私は夫');
+  });
+
+  it('IndexedDB側が消えても localStorage バックアップから自動復元される', async () => {
+    await saveFactnoteProfile('私は夫。妻はママと呼ぶ。');
+    // ブラウザによるIndexedDB退避を再現（localStorageは残る）
+    (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
+    const restored = await loadFactnoteProfile();
+    expect(restored.markdown).toBe('私は夫。妻はママと呼ぶ。');
+    // ヒール後はIndexedDB側にも書き戻されている
+    const again = await loadFactnoteProfile();
+    expect(again.markdown).toBe('私は夫。妻はママと呼ぶ。');
   });
 });
 

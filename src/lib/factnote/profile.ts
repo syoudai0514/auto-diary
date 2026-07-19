@@ -33,16 +33,64 @@ export const FACTNOTE_PROFILE_PLACEHOLDER = [
   '- 録音では妻の声が高め、私の声が低め',
 ].join('\n');
 
+/**
+ * localStorage 側のバックアップキー。
+ * IndexedDB はブラウザの容量逼迫時に退避・削除されることがあるため、
+ * 小さなプロフィールは localStorage にも二重保存し、どちらかが消えても
+ * もう片方から自動復元する（読み込み時にヒール）。
+ */
+const LOCAL_BACKUP_KEY = 'factnote-profile-backup';
+
+function loadLocalBackup(): FactnoteProfile | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(LOCAL_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FactnoteProfile>;
+    if (typeof parsed.markdown === 'string' && parsed.markdown.trim()) {
+      return { markdown: parsed.markdown, updatedAt: parsed.updatedAt ?? '' };
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
+}
+
+function saveLocalBackup(profile: FactnoteProfile): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(profile));
+    }
+  } catch {
+    /* 容量不足などは無視（meta側が正） */
+  }
+}
+
 export async function loadFactnoteProfile(): Promise<FactnoteProfile> {
+  let fromMeta: FactnoteProfile | null = null;
   try {
     const raw = await getMeta<FactnoteProfile>(META_FACTNOTE_PROFILE);
     if (raw && typeof raw.markdown === 'string') {
-      return { markdown: raw.markdown, updatedAt: raw.updatedAt ?? '' };
+      fromMeta = { markdown: raw.markdown, updatedAt: raw.updatedAt ?? '' };
     }
   } catch {
-    /* 読み込み失敗時は空で返す */
+    fromMeta = null;
   }
-  return { ...DEFAULT_FACTNOTE_PROFILE };
+  if (fromMeta?.markdown.trim()) {
+    saveLocalBackup(fromMeta);
+    return fromMeta;
+  }
+  // meta 側が空・読めない場合は localStorage バックアップから復元してヒールする
+  const backup = loadLocalBackup();
+  if (backup) {
+    try {
+      await setMeta(META_FACTNOTE_PROFILE, backup);
+    } catch {
+      /* ヒール失敗でも表示は復元できる */
+    }
+    return backup;
+  }
+  return fromMeta ?? { ...DEFAULT_FACTNOTE_PROFILE };
 }
 
 export async function saveFactnoteProfile(markdown: string): Promise<FactnoteProfile> {
@@ -51,6 +99,7 @@ export async function saveFactnoteProfile(markdown: string): Promise<FactnotePro
     updatedAt: new Date().toISOString(),
   };
   await setMeta(META_FACTNOTE_PROFILE, profile);
+  saveLocalBackup(profile);
   return profile;
 }
 

@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { FactnoteRecordDetailScreen } from '@/components/screens/factnote/RecordDetailScreen';
-import { getRecord, listFutureMemos, saveRecord, trashRecord } from '@/lib/factnote/db';
+import {
+  getAttachmentBlob,
+  getRecord,
+  listFutureMemos,
+  saveRecord,
+  trashRecord,
+} from '@/lib/factnote/db';
 import {
   getFactnoteJob,
   startAnalyzeJob,
+  startTranscribeJob,
   subscribeFactnoteJobs,
 } from '@/lib/factnote/jobs';
 import { recordToContext, sourceTextOf } from '@/lib/factnote/newRecord';
@@ -19,13 +26,16 @@ export default function FactnoteRecordDetailPage() {
   const [record, setRecord] = useState<IncidentRecord | null | undefined>(undefined);
   const [pinnedMemos, setPinnedMemos] = useState<FutureSelfMemo[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
 
   const reload = useCallback(async () => {
     if (!params?.id) return;
     try {
       const r = await getRecord(params.id);
       setRecord(r ?? null);
-      setAnalyzing(!!r && !!getFactnoteJob(r.id));
+      const job = r ? getFactnoteJob(r.id) : undefined;
+      setAnalyzing(job?.kind === 'analyze');
+      setTranscribing(job?.kind === 'transcribe');
       if (r?.pinnedMemoIds?.length) {
         const memos = await listFutureMemos();
         setPinnedMemos(memos.filter((m) => r.pinnedMemoIds?.includes(m.id)));
@@ -47,21 +57,68 @@ export default function FactnoteRecordDetailPage() {
       if (event.job.recordId !== params?.id) return;
       if (event.type !== 'progress') {
         setAnalyzing(false);
+        setTranscribing(false);
         void reload();
       }
     });
   }, [params?.id, reload]);
 
+  /** 分類・除外・固定メモなど画面からの部分更新を、DB上の最新へマージして保存する。 */
+  const mergeUpdate = useCallback(
+    async (updated: IncidentRecord) => {
+      setRecord(updated);
+      const fresh = await getRecord(updated.id).catch(() => undefined);
+      const base = fresh ?? updated;
+      await saveRecord({
+        ...base,
+        isPositiveEvent: updated.isPositiveEvent,
+        isConflict: updated.isConflict,
+        isRepairAction: updated.isRepairAction,
+        excludeFromCarte: updated.excludeFromCarte,
+        pinnedMemoIds: updated.pinnedMemoIds,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [],
+  );
+
   async function analyze() {
     if (!record || !sourceTextOf(record)) return;
     setAnalyzing(true);
-    const updated = { ...record, status: 'analyzing' as const, updatedAt: new Date().toISOString() };
+    const fresh = (await getRecord(record.id).catch(() => undefined)) ?? record;
+    const updated = { ...fresh, status: 'analyzing' as const, updatedAt: new Date().toISOString() };
     await saveRecord(updated);
     setRecord(updated);
     const profile = await loadFactnoteProfile();
     startAnalyzeJob({
       recordId: record.id,
-      context: recordToContext(record),
+      context: recordToContext(updated),
+      peopleContext: profileToPeopleContext(profile),
+    });
+  }
+
+  /** 保存済みの音声（原本）から文字起こしを再実行する。録音は失われない設計の要。 */
+  async function transcribeFromAttachments() {
+    if (!record || record.attachments.length === 0) return;
+    const items: Array<{ blob: Blob; filename: string }> = [];
+    for (const att of record.attachments) {
+      const blob = await getAttachmentBlob(att.id).catch(() => undefined);
+      if (blob) items.push({ blob, filename: att.fileName });
+    }
+    if (items.length === 0) return;
+    setTranscribing(true);
+    const fresh = (await getRecord(record.id).catch(() => undefined)) ?? record;
+    const updated = {
+      ...fresh,
+      status: 'transcribing' as const,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveRecord(updated);
+    setRecord(updated);
+    const profile = await loadFactnoteProfile();
+    startTranscribeJob({
+      recordId: record.id,
+      items,
       peopleContext: profileToPeopleContext(profile),
     });
   }
@@ -93,11 +150,12 @@ export default function FactnoteRecordDetailPage() {
       record={record}
       pinnedMemos={pinnedMemos}
       analyzing={analyzing}
+      transcribing={transcribing}
       onAnalyze={sourceTextOf(record) ? () => void analyze() : undefined}
-      onUpdate={async (updated) => {
-        setRecord(updated);
-        await saveRecord(updated);
-      }}
+      onTranscribe={
+        record.attachments.length > 0 ? () => void transcribeFromAttachments() : undefined
+      }
+      onUpdate={(updated) => void mergeUpdate(updated)}
       onDelete={async () => {
         await trashRecord(record.id);
         router.push('/factnote/records');

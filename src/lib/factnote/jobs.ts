@@ -10,7 +10,7 @@ import {
   sha256OfBlob,
   type FactnoteAnalyzeResult,
 } from './api';
-import { getCachedTranscript, getRecord, saveRecord, setCachedTranscript } from './db';
+import { getCachedTranscript, getRecord, listRecords, saveRecord, setCachedTranscript } from './db';
 import { applyAnalysisResult, sourceTextOf } from './newRecord';
 import type { IncidentContext } from './prompts/incidentAnalysis';
 import type { IncidentRecord } from './types';
@@ -249,4 +249,25 @@ export function startAnalyzeJob(opts: AnalyzeJobOptions): FactnoteJob {
   })();
 
   return job;
+}
+
+/**
+ * 処理中のまま取り残された記録の復旧。
+ * タブの強制終了・リロード等でジョブが消えると、記録が
+ * status='transcribing'/'analyzing' のまま残る（原本・完了済みの
+ * 文字起こしは保存済み）。実行中ジョブが存在しないのに処理中状態の
+ * 記録を 'draft' へ戻し、詳細画面から再実行できるようにする。
+ * ホーム・一覧の読み込み時に呼ぶ。
+ */
+export async function recoverStaleProcessingRecords(): Promise<number> {
+  const records = await listRecords();
+  let recovered = 0;
+  for (const record of records) {
+    const processing = record.status === 'transcribing' || record.status === 'analyzing';
+    if (processing && !jobs.has(record.id)) {
+      await saveRecord({ ...record, status: 'draft', updatedAt: new Date().toISOString() });
+      recovered += 1;
+    }
+  }
+  return recovered;
 }
