@@ -487,6 +487,15 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   async function runGenerateDiary(mode: DiaryMode) {
     const record = ensureRecord();
     setDiaryMode(mode);
+    // 「原文のまま」はAIを使わず、入力/文字起こしをそのまま日記本文にする（意訳しない）
+    if (mode === 'verbatim') {
+      const source = sourceTextOf(record);
+      generatedDiaryRef.current = null;
+      setDiaryTitle(record.title || source.split('\n')[0]?.slice(0, 40) || '無題');
+      setDiaryBody(source);
+      setStep('diaryEdit');
+      return;
+    }
     setStep('diaryGenerating');
     try {
       const diary = await withRetryOn429(() =>
@@ -520,8 +529,8 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
           body: diaryBody,
           createdAt: new Date().toISOString(),
           editedByUser: !generated || generated.title !== diaryTitle || generated.body !== diaryBody,
-          aiModel: r.analysis?.aiModel,
-          promptVersion: FACTNOTE_DIARY_PROMPT_VERSION,
+          aiModel: diaryMode === 'verbatim' ? undefined : r.analysis?.aiModel,
+          promptVersion: diaryMode === 'verbatim' ? undefined : FACTNOTE_DIARY_PROMPT_VERSION,
         },
       ],
     }));
@@ -787,9 +796,14 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
               <li key={m}>
                 <button
                   onClick={() => void runGenerateDiary(m)}
-                  className="min-h-[52px] w-full rounded-card border border-border bg-surface px-4 py-3 text-left text-[15px] font-medium active:opacity-70"
+                  className="min-h-[52px] w-full rounded-card border border-border bg-surface px-4 py-3 text-left active:opacity-70"
                 >
-                  {DIARY_MODE_LABELS[m]}
+                  <span className="block text-[15px] font-medium">{DIARY_MODE_LABELS[m]}</span>
+                  {m === 'verbatim' && (
+                    <span className="mt-0.5 block text-[12px] text-text-tertiary">
+                      入力した文章をそのまま日記にします（AIは書き換えません）
+                    </span>
+                  )}
                 </button>
               </li>
             ))}

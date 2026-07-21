@@ -17,6 +17,8 @@ const MODE_GUIDE: Record<DiaryMode, string> = {
   short: '短い日記として書く。本文は3〜4文程度に収め、要点だけを一人称でまとめる。',
   detailed:
     '詳細な日記として書く。経緯・双方の対応・自分の感情・反省点・相手に求めたいこと・今後どうしたいかまで、段落を分けて丁寧に書く。',
+  // verbatim はAIを使わない（原文をそのまま日記にする）ため、このガイドは参照されない
+  verbatim: '（原文をそのまま日記にするモード。AIは使用しない）',
 };
 
 export function buildFactnoteDiarySystemPrompt(mode: DiaryMode, peopleContext?: string): string {

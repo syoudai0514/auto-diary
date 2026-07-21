@@ -1,15 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
-import { getAttachmentBlob } from '@/lib/factnote/db';
+import { EditIcon, ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
+import { withRetryOn429 } from '@/lib/retry';
+import { ApiError } from '@/lib/api';
+import { factnoteDiaryApi } from '@/lib/factnote/api';
+import { getAttachmentBlob, newFactnoteId } from '@/lib/factnote/db';
+import { analysisSummaryForDiary } from '@/lib/factnote/generateFactnoteDiary';
+import { sourceTextOf } from '@/lib/factnote/newRecord';
+import { loadFactnoteProfile, profileToPeopleContext } from '@/lib/factnote/profile';
+import { FACTNOTE_DIARY_PROMPT_VERSION } from '@/lib/factnote/prompts/diary';
 import {
+  AI_DIARY_MODES,
   DIARY_MODE_LABELS,
   RECORD_SOURCE_LABELS,
+  type DiaryMode,
   type FutureSelfMemo,
   type IncidentRecord,
 } from '@/lib/factnote/types';
+import { AutoTextarea } from '@/components/screens/common';
 import { AnalysisView } from './AnalysisView';
 import { Badge, FactnoteHeader, RecordBadges, Section, formatRecordDate } from './common';
 
@@ -56,7 +66,19 @@ export function FactnoteRecordDetailScreen({
 
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
-      <FactnoteHeader title={record.title || '無題の記録'} backHref="/factnote/records" />
+      <FactnoteHeader
+        title={record.title || '無題の記録'}
+        backHref="/factnote/records"
+        right={
+          <Link
+            href={`/factnote/records/${record.id}/edit`}
+            className="flex h-9 items-center gap-1 rounded-full border border-border px-3 text-[13px] text-text active:opacity-60"
+          >
+            <EditIcon width={15} height={15} />
+            編集
+          </Link>
+        }
+      />
       <div className="px-6 pt-1">
         <div className="text-[12px] text-text-tertiary">
           {formatRecordDate(record.occurredAt ?? record.createdAt)}
@@ -102,10 +124,23 @@ export function FactnoteRecordDetailScreen({
           </div>
         )}
 
-        {tab === 'diary' && <DiaryTab record={record} />}
+        {tab === 'diary' && <DiaryTab record={record} onUpdate={onUpdate} />}
         {tab === 'analysis' &&
           (record.analysis ? (
-            <AnalysisView analysis={record.analysis} />
+            <>
+              <AnalysisView analysis={record.analysis} />
+              {onAnalyze && (
+                <div className="mb-6 mt-2 text-center">
+                  <button
+                    onClick={onAnalyze}
+                    disabled={analyzing}
+                    className="min-h-[44px] text-[13px] text-text-secondary active:opacity-60 disabled:opacity-50"
+                  >
+                    {analyzing ? '分析中…（他の画面に移動できます）' : '内容を直したので分析をやり直す'}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="mt-10 text-center">
               <p className="text-[14px] text-text-tertiary">まだ分析していません。</p>
@@ -114,7 +149,7 @@ export function FactnoteRecordDetailScreen({
                   <button
                     onClick={onAnalyze}
                     disabled={analyzing}
-                    className="mt-5 h-13 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta disabled:opacity-50"
+                    className="mt-5 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta disabled:opacity-50"
                   >
                     {analyzing ? '分析中…（他の画面に移動できます）' : 'AIで分析する'}
                   </button>
@@ -238,21 +273,294 @@ function EmptyTab({ text }: { text: string }) {
   return <div className="mt-16 text-center text-[14px] text-text-tertiary">{text}</div>;
 }
 
-function DiaryTab({ record }: { record: IncidentRecord }) {
-  if (record.diaryVersions.length === 0) return <EmptyTab text="まだ日記を作成していません。" />;
+/** 日記タブ: 既存の日記を編集・削除でき、モードを選んで作り直し／追加できる。 */
+function DiaryTab({
+  record,
+  onUpdate,
+}: {
+  record: IncidentRecord;
+  onUpdate: (record: IncidentRecord) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [confirmDelId, setConfirmDelId] = useState<string | null>(null);
+  // 作り直し／追加の状態機械
+  const [composing, setComposing] = useState<false | 'pickMode' | 'generating' | 'review'>(false);
+  const [genMode, setGenMode] = useState<DiaryMode>('factual');
+  const [genTitle, setGenTitle] = useState('');
+  const [genBody, setGenBody] = useState('');
+  const [genError, setGenError] = useState<string | null>(null);
+  const genWasAi = useRef(false);
+  const peopleCtx = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    loadFactnoteProfile().then((p) => (peopleCtx.current = profileToPeopleContext(p)));
+  }, []);
+
+  const source = sourceTextOf(record);
+
+  function saveEdit(id: string) {
+    onUpdate({
+      ...record,
+      diaryVersions: record.diaryVersions.map((x) =>
+        x.id === id ? { ...x, title: editTitle, body: editBody, editedByUser: true } : x,
+      ),
+      updatedAt: new Date().toISOString(),
+    });
+    setEditingId(null);
+  }
+
+  function deleteVersion(id: string) {
+    onUpdate({
+      ...record,
+      diaryVersions: record.diaryVersions.filter((x) => x.id !== id),
+      updatedAt: new Date().toISOString(),
+    });
+    setConfirmDelId(null);
+  }
+
+  async function generate(mode: DiaryMode) {
+    setGenMode(mode);
+    setGenError(null);
+    if (mode === 'verbatim') {
+      genWasAi.current = false;
+      setGenTitle(record.title || source.split('\n')[0]?.slice(0, 40) || '無題');
+      setGenBody(source);
+      setComposing('review');
+      return;
+    }
+    setComposing('generating');
+    try {
+      const diary = await withRetryOn429(() =>
+        factnoteDiaryApi(
+          mode,
+          source,
+          record.analysis ? analysisSummaryForDiary(record.analysis) : undefined,
+          peopleCtx.current,
+        ),
+      );
+      genWasAi.current = true;
+      setGenTitle(diary.title);
+      setGenBody(diary.body);
+      setComposing('review');
+    } catch (e) {
+      setGenError(e instanceof ApiError ? e.message : '日記の生成に失敗しました。');
+      setComposing('pickMode');
+    }
+  }
+
+  function saveGenerated() {
+    onUpdate({
+      ...record,
+      diaryVersions: [
+        ...record.diaryVersions,
+        {
+          id: newFactnoteId(),
+          mode: genMode,
+          title: genTitle,
+          body: genBody,
+          createdAt: new Date().toISOString(),
+          editedByUser: false,
+          aiModel: genMode === 'verbatim' ? undefined : record.analysis?.aiModel,
+          promptVersion: genMode === 'verbatim' ? undefined : FACTNOTE_DIARY_PROMPT_VERSION,
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    setComposing(false);
+  }
+
+  // --- 作り直し／追加のUI ---
+  if (composing === 'pickMode') {
+    return (
+      <div className="pb-4 pt-4">
+        <h3 className="text-[14px] font-semibold">日記のモードを選ぶ</h3>
+        <ul className="mt-3 space-y-2">
+          {(['verbatim', ...AI_DIARY_MODES] as DiaryMode[]).map((m) => (
+            <li key={m}>
+              <button
+                onClick={() => void generate(m)}
+                disabled={!source}
+                className="min-h-[52px] w-full rounded-card border border-border bg-surface px-4 py-3 text-left active:opacity-70 disabled:opacity-40"
+              >
+                <span className="block text-[15px] font-medium">{DIARY_MODE_LABELS[m]}</span>
+                {m === 'verbatim' && (
+                  <span className="mt-0.5 block text-[12px] text-text-tertiary">
+                    入力した文章をそのまま日記にします（AIは書き換えません）
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {genError && <p className="mt-3 text-[12px] text-error">{genError}</p>}
+        <button
+          onClick={() => setComposing(false)}
+          className="mt-4 min-h-[44px] w-full text-[14px] text-text-secondary"
+        >
+          やめる
+        </button>
+      </div>
+    );
+  }
+
+  if (composing === 'generating') {
+    return (
+      <div className="mt-16 text-center">
+        <div className="mx-auto mb-4 h-12 w-12 animate-spin360 rounded-full border-[3px] border-border border-t-accent" />
+        <p className="text-[14px] text-text-secondary">日記を書いています…</p>
+      </div>
+    );
+  }
+
+  if (composing === 'review') {
+    return (
+      <div className="pb-4 pt-4">
+        <input
+          value={genTitle}
+          onChange={(e) => setGenTitle(e.target.value)}
+          aria-label="日記のタイトル"
+          className="h-12 w-full rounded-card border border-border bg-surface px-4 text-[17px] font-bold focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+        <AutoTextarea
+          value={genBody}
+          onChange={setGenBody}
+          ariaLabel="日記の本文"
+          className="mt-3 min-h-[40dvh] w-full resize-none rounded-card border border-border bg-surface px-4 py-3 text-[15px] leading-[1.9] focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+        <div className="mt-4 space-y-2">
+          <button
+            onClick={saveGenerated}
+            disabled={!genTitle.trim() || !genBody.trim()}
+            className="h-12 w-full rounded-full bg-accent text-[15px] font-semibold text-accent-on shadow-cta disabled:opacity-40"
+          >
+            この日記を保存
+          </button>
+          {genWasAi.current && (
+            <button
+              onClick={() => setComposing('pickMode')}
+              className="h-11 w-full rounded-full border border-border text-[14px] active:opacity-70"
+            >
+              別のモードで作り直す
+            </button>
+          )}
+          <button
+            onClick={() => setComposing(false)}
+            className="h-11 w-full text-[14px] text-text-secondary"
+          >
+            やめる
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- 通常表示（一覧 + 追加ボタン） ---
   return (
     <div className="pb-4">
-      {record.diaryVersions.map((d) => (
-        <div key={d.id} className="mt-5 rounded-card border border-border px-4 py-4">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge label={DIARY_MODE_LABELS[d.mode]} tone="accent" />
-            {d.editedByUser && <Badge label="ユーザー編集済み" />}
-            <span className="text-[11px] text-text-tertiary">{formatRecordDate(d.createdAt)}</span>
-          </div>
-          <h3 className="mt-2 text-[17px] font-bold">{d.title}</h3>
-          <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.9]">{d.body}</p>
+      {record.diaryVersions.length === 0 ? (
+        <div className="mt-12 text-center text-[14px] text-text-tertiary">
+          まだ日記を作成していません。
         </div>
-      ))}
+      ) : (
+        record.diaryVersions.map((d) => (
+          <div key={d.id} className="mt-5 rounded-card border border-border px-4 py-4">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge label={DIARY_MODE_LABELS[d.mode]} tone="accent" />
+              {d.editedByUser && <Badge label="ユーザー編集済み" />}
+              <span className="text-[11px] text-text-tertiary">{formatRecordDate(d.createdAt)}</span>
+            </div>
+            {editingId === d.id ? (
+              <div className="mt-3">
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  aria-label="日記のタイトル"
+                  className="h-11 w-full rounded-card border border-border bg-bg px-3 text-[16px] font-bold focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <AutoTextarea
+                  value={editBody}
+                  onChange={setEditBody}
+                  ariaLabel="日記の本文"
+                  className="mt-2 min-h-[30dvh] w-full resize-none rounded-card border border-border bg-bg px-3 py-2 text-[15px] leading-[1.9] focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => saveEdit(d.id)}
+                    disabled={!editTitle.trim() || !editBody.trim()}
+                    className="h-10 flex-1 rounded-full bg-accent text-[14px] font-semibold text-accent-on disabled:opacity-40"
+                  >
+                    保存
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="h-10 rounded-full border border-border px-4 text-[14px] active:opacity-70"
+                  >
+                    やめる
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h3 className="mt-2 text-[17px] font-bold">{d.title}</h3>
+                <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.9]">{d.body}</p>
+                <div className="mt-3 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setEditingId(d.id);
+                      setEditTitle(d.title);
+                      setEditBody(d.body);
+                    }}
+                    className="flex min-h-[36px] items-center gap-1 text-[13px] text-accent active:opacity-60"
+                  >
+                    <EditIcon width={14} height={14} />
+                    編集
+                  </button>
+                  {confirmDelId === d.id ? (
+                    <>
+                      <button
+                        onClick={() => deleteVersion(d.id)}
+                        className="min-h-[36px] text-[13px] font-semibold text-error active:opacity-60"
+                      >
+                        削除する
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelId(null)}
+                        className="min-h-[36px] text-[13px] text-text-tertiary active:opacity-60"
+                      >
+                        やめる
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDelId(d.id)}
+                      className="min-h-[36px] text-[13px] text-error active:opacity-60"
+                    >
+                      削除
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        ))
+      )}
+
+      <button
+        onClick={() => {
+          setGenError(null);
+          setComposing('pickMode');
+        }}
+        disabled={!source}
+        className="mt-5 h-12 w-full rounded-full bg-accent text-[15px] font-semibold text-accent-on shadow-cta disabled:opacity-40"
+      >
+        {record.diaryVersions.length === 0 ? '日記を作成' : '日記を作り直す／追加する'}
+      </button>
+      {!source && (
+        <p className="mt-2 text-center text-[11.5px] text-text-tertiary">
+          日記を作るには、先に文章入力か文字起こしが必要です。
+        </p>
+      )}
     </div>
   );
 }

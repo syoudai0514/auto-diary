@@ -164,9 +164,40 @@ export async function run({ base, invite, newPage }) {
 
   const detailUrl = page.url();
 
+  // --- 日記タブから「原文のまま」で日記を追加（AIで意訳しない） ---
+  await page.click('[role="tab"]:has-text("日記")');
+  await page.click('button:has-text("日記を作り直す／追加する")');
+  await page.waitForSelector('text=日記のモードを選ぶ', { timeout: 5000 });
+  await page.click('button:has-text("原文のまま")');
+  await page.waitForSelector('textarea[aria-label="日記の本文"]', { timeout: 5000 });
+  // 原文（原本の文章）がそのまま本文に入っている
+  const verbatimBody = await page.inputValue('textarea[aria-label="日記の本文"]');
+  if (!verbatimBody.includes('「いつもそう」と言われて苦しかった')) {
+    throw new Error('FAIL: verbatim diary did not carry the original text as-is');
+  }
+  await page.click('button:has-text("この日記を保存")');
+  await page.waitForSelector('text=原文のまま', { timeout: 5000 });
+  console.log('  OK: verbatim diary keeps original text unchanged');
+
+  // --- 既存の日記を後から編集できる ---
+  await page.click('button:has-text("編集") >> nth=0');
+  await page.fill('input[aria-label="日記のタイトル"] >> nth=0', '手直ししたタイトル');
+  await page.click('button:has-text("保存") >> nth=0');
+  await page.waitForSelector('text=手直ししたタイトル', { timeout: 5000 });
+  console.log('  OK: existing diary can be edited after save');
+
+  // --- 記録の日付・内容を後から編集できる ---
+  await page.click('a:has-text("編集")');
+  await page.waitForSelector('text=記録を編集', { timeout: 5000 });
+  await page.fill('input[aria-label="タイトル"]', '荷物の受け取り（あとで修正）');
+  await page.click('button:has-text("変更を保存")');
+  await page.waitForURL('**/factnote/records/*', { timeout: 10000 });
+  await page.waitForSelector('text=荷物の受け取り（あとで修正）', { timeout: 5000 });
+  console.log('  OK: record date/title/content editable after save');
+
   // --- 一覧に反映 ---
   await page.goto(`${base}/factnote/records`);
-  await page.waitForSelector('text=荷物の受け取りを忘れた', { timeout: 10000 });
+  await page.waitForSelector('text=荷物の受け取り', { timeout: 10000 });
   await page.waitForSelector('text=分析済み', { timeout: 5000 });
   console.log('  OK: record appears in list with analyzed badge');
 

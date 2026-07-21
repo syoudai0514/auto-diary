@@ -13,7 +13,7 @@ export const FACTNOTE_SCHEMA_VERSION = 1;
 
 export type RecordSource = 'voice_recording' | 'audio_file' | 'text' | 'screenshot' | 'quick_memo';
 export type EvidenceType = 'audio' | 'image' | 'text' | 'user_statement';
-export type DiaryMode = 'factual' | 'emotional' | 'family' | 'short' | 'detailed';
+export type DiaryMode = 'factual' | 'emotional' | 'family' | 'short' | 'detailed' | 'verbatim';
 export type RecordStatus = 'draft' | 'transcribing' | 'analyzing' | 'ready' | 'error';
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 export type ChildrenPresent = 'yes' | 'no' | 'unknown';
@@ -199,12 +199,16 @@ export interface SafetyFlag {
 
 /** 日記モードの表示名。 */
 export const DIARY_MODE_LABELS: Record<DiaryMode, string> = {
+  verbatim: '原文のまま（変えない）',
   factual: '事実記録',
   emotional: '感情整理',
   family: '家族日記',
   short: '短い日記',
   detailed: '詳細な日記',
 };
+
+/** AIが文章を生成する日記モード（verbatim は AI を使わないので含めない）。 */
+export const AI_DIARY_MODES: DiaryMode[] = ['factual', 'emotional', 'family', 'short', 'detailed'];
 
 /** 入力形式の表示名。 */
 export const RECORD_SOURCE_LABELS: Record<RecordSource, string> = {

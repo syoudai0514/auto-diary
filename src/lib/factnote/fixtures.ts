@@ -145,9 +145,9 @@ export function buildMockAnalyzeResult() {
   };
 }
 
-/** モック日記（モード別の固定文面）。 */
+/** モック日記（AIモード別の固定文面。verbatim はAIを使わないので対象外）。 */
 export function buildMockDiary(mode: DiaryMode): { title: string; body: string } {
-  const bodies: Record<DiaryMode, { title: string; body: string }> = {
+  const bodies: Record<Exclude<DiaryMode, 'verbatim'>, { title: string; body: string }> = {
     factual: {
       title: '荷物の受け取りを忘れた日',
       body: '夕方、頼まれていた荷物の受け取りを忘れていたことが分かった。原因は仕事の電話が長引いたこと。その場で謝罪した。相手からは「いつもそう」という言葉があった。次からは依頼を受けた時点でリマインダーを設定する。',
@@ -169,7 +169,7 @@ export function buildMockDiary(mode: DiaryMode): { title: string; body: string }
       body: '18時頃、帰宅した相手から荷物の受け取りを忘れていたことを指摘された。依頼は今朝の口頭のみで、メモは取っていなかった。仕事の電話が長引き、そのまま失念した。指摘に対してその場で謝罪したが、相手からは「いつもそう」「全部わたしがやることになる」という言葉があった。忘れたこと自体は自分の改善点。一方で、一件のミスが全体への評価に広がった点は、今回の事実とは分けて考えたい。再発防止として、依頼を受けた瞬間にリマインダーを登録することにする。',
     },
   };
-  return bodies[mode];
+  return mode === 'verbatim' ? bodies.factual : bodies[mode];
 }
 
 // ---------------------------------------------------------------------------
