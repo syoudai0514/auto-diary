@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { EditIcon, ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
+import { AlertTriangleIcon, EditIcon, ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
 import { withRetryOn429 } from '@/lib/retry';
 import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi } from '@/lib/factnote/api';
@@ -41,6 +41,7 @@ export function FactnoteRecordDetailScreen({
   pinnedMemos = [],
   analyzing = false,
   transcribing = false,
+  analyzeError = null,
   onDelete,
   onUpdate,
   onAnalyze,
@@ -53,6 +54,8 @@ export function FactnoteRecordDetailScreen({
   analyzing?: boolean;
   /** この記録の文字起こしジョブが実行中か。 */
   transcribing?: boolean;
+  /** 直近の分析/文字起こしジョブのエラー（あれば表示）。 */
+  analyzeError?: string | null;
   onDelete: () => void;
   /** 分類修正・カルテ除外などの更新（永続化は呼び出し側）。 */
   onUpdate: (record: IncidentRecord) => void;
@@ -125,41 +128,14 @@ export function FactnoteRecordDetailScreen({
         )}
 
         {tab === 'diary' && <DiaryTab record={record} onUpdate={onUpdate} />}
-        {tab === 'analysis' &&
-          (record.analysis ? (
-            <>
-              <AnalysisView analysis={record.analysis} />
-              {onAnalyze && (
-                <div className="mb-6 mt-2 text-center">
-                  <button
-                    onClick={onAnalyze}
-                    disabled={analyzing}
-                    className="min-h-[44px] text-[13px] text-text-secondary active:opacity-60 disabled:opacity-50"
-                  >
-                    {analyzing ? '分析中…（他の画面に移動できます）' : '内容を直したので分析をやり直す'}
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="mt-10 text-center">
-              <p className="text-[14px] text-text-tertiary">まだ分析していません。</p>
-              {onAnalyze && (
-                <>
-                  <button
-                    onClick={onAnalyze}
-                    disabled={analyzing}
-                    className="mt-5 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta disabled:opacity-50"
-                  >
-                    {analyzing ? '分析中…（他の画面に移動できます）' : 'AIで分析する'}
-                  </button>
-                  <p className="mx-auto mt-3 max-w-[280px] text-[11.5px] leading-relaxed text-text-tertiary">
-                    分析はバックグラウンドで実行され、完了するとこの記録に反映されます。
-                  </p>
-                </>
-              )}
-            </div>
-          ))}
+        {tab === 'analysis' && (
+          <AnalysisTab
+            record={record}
+            analyzing={analyzing}
+            analyzeError={analyzeError}
+            onAnalyze={onAnalyze}
+          />
+        )}
         {tab === 'transcript' && (
           <TranscriptTab record={record} transcribing={transcribing} onTranscribe={onTranscribe} />
         )}
@@ -271,6 +247,94 @@ export function FactnoteRecordDetailScreen({
 
 function EmptyTab({ text }: { text: string }) {
   return <div className="mt-16 text-center text-[14px] text-text-tertiary">{text}</div>;
+}
+
+/** 分析タブ: 分析中はスピナー、失敗はエラー表示、分析済みは結果+やり直し。 */
+function AnalysisTab({
+  record,
+  analyzing,
+  analyzeError,
+  onAnalyze,
+}: {
+  record: IncidentRecord;
+  analyzing: boolean;
+  analyzeError: string | null;
+  onAnalyze?: () => void;
+}) {
+  // 分析中は、古い結果を出したままにせず、進行が分かる表示にする
+  if (analyzing) {
+    return (
+      <div className="mt-16 text-center">
+        <div className="mx-auto mb-4 h-14 w-14 animate-spin360 rounded-full border-[3px] border-border border-t-accent" />
+        <p className="text-[15px] font-semibold">分析しています…</p>
+        <p className="mx-auto mt-2 max-w-[280px] text-[12px] leading-relaxed text-text-tertiary">
+          AIが事実と解釈を分けています。数秒〜十数秒かかります。他の画面に移動しても続きます。
+        </p>
+      </div>
+    );
+  }
+
+  if (analyzeError) {
+    return (
+      <div className="mt-12 text-center">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-error-soft text-error">
+          <AlertTriangleIcon width={30} height={30} />
+        </div>
+        <p className="text-[15px] font-semibold">分析に失敗しました</p>
+        <p className="mx-auto mt-2 max-w-[280px] text-[12.5px] leading-relaxed text-text-secondary">
+          {analyzeError}
+        </p>
+        {onAnalyze && (
+          <button
+            onClick={onAnalyze}
+            className="mt-5 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta"
+          >
+            もう一度分析する
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (record.analysis) {
+    return (
+      <>
+        <AnalysisView analysis={record.analysis} />
+        {onAnalyze && (
+          <div className="mb-6 mt-2 text-center">
+            <button
+              onClick={onAnalyze}
+              className="min-h-[44px] text-[13px] text-text-secondary active:opacity-60"
+            >
+              内容を直したので分析をやり直す
+            </button>
+            <p className="mt-1 text-[11px] text-text-tertiary">
+              「分析」欄の一番下に、最後に分析した日時が表示されます。
+            </p>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-10 text-center">
+      <p className="text-[14px] text-text-tertiary">まだ分析していません。</p>
+      {onAnalyze && (
+        <>
+          <button
+            onClick={onAnalyze}
+            className="mt-5 h-[52px] w-full max-w-[280px] rounded-full bg-accent text-[16px] font-semibold text-accent-on shadow-cta"
+          >
+            AIで分析する
+          </button>
+          <p className="mx-auto mt-3 max-w-[280px] text-[11.5px] leading-relaxed text-text-tertiary">
+            分析はバックグラウンドで実行され、完了するとこの記録に反映されます。
+          </p>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** 日記タブ: 既存の日記を編集・削除でき、モードを選んで作り直し／追加できる。 */

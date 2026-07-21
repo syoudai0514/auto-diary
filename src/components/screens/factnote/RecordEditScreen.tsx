@@ -78,7 +78,12 @@ export function FactnoteRecordEditScreen({
     };
 
     if (editsRawText) {
-      updated = { ...updated, rawText: rawText.trim() || undefined };
+      const newText = rawText.trim() || undefined;
+      // 文章の根拠（EvidenceItem）も本文と同期させ、分析の根拠表示が古くならないようにする
+      const evidenceItems = record.evidenceItems.map((ev) =>
+        ev.type === 'text' ? { ...ev, text: newText ?? '' } : ev,
+      );
+      updated = { ...updated, rawText: newText, evidenceItems };
     } else {
       // 音声由来: ユーザー修正として correctedTranscript に保存（原本の transcript は残す）
       const original = record.transcript ?? '';

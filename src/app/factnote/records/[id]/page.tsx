@@ -27,6 +27,7 @@ export default function FactnoteRecordDetailPage() {
   const [pinnedMemos, setPinnedMemos] = useState<FutureSelfMemo[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [jobError, setJobError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!params?.id) return;
@@ -51,15 +52,20 @@ export default function FactnoteRecordDetailPage() {
     void reload();
   }, [reload]);
 
-  // バックグラウンドジョブの完了・失敗でこの記録を再読み込みする
+  // バックグラウンドジョブの進捗・完了・失敗をこの画面へ反映する
   useEffect(() => {
     return subscribeFactnoteJobs((event) => {
       if (event.job.recordId !== params?.id) return;
-      if (event.type !== 'progress') {
-        setAnalyzing(false);
-        setTranscribing(false);
-        void reload();
+      if (event.type === 'progress') return;
+      setAnalyzing(false);
+      setTranscribing(false);
+      if (event.type === 'error') {
+        // 失敗を握りつぶさず、画面に表示する
+        setJobError(event.message);
+      } else {
+        setJobError(null);
       }
+      void reload();
     });
   }, [params?.id, reload]);
 
@@ -84,6 +90,7 @@ export default function FactnoteRecordDetailPage() {
 
   async function analyze() {
     if (!record || !sourceTextOf(record)) return;
+    setJobError(null);
     setAnalyzing(true);
     const fresh = (await getRecord(record.id).catch(() => undefined)) ?? record;
     const updated = { ...fresh, status: 'analyzing' as const, updatedAt: new Date().toISOString() };
@@ -106,6 +113,7 @@ export default function FactnoteRecordDetailPage() {
       if (blob) items.push({ blob, filename: att.fileName });
     }
     if (items.length === 0) return;
+    setJobError(null);
     setTranscribing(true);
     const fresh = (await getRecord(record.id).catch(() => undefined)) ?? record;
     const updated = {
@@ -151,6 +159,7 @@ export default function FactnoteRecordDetailPage() {
       pinnedMemos={pinnedMemos}
       analyzing={analyzing}
       transcribing={transcribing}
+      analyzeError={jobError}
       onAnalyze={sourceTextOf(record) ? () => void analyze() : undefined}
       onTranscribe={
         record.attachments.length > 0 ? () => void transcribeFromAttachments() : undefined
