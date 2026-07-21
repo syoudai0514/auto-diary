@@ -24,6 +24,10 @@ export function FactnoteSettingsScreen({
   onExportJson,
   onShareJson,
   canShare,
+  autoBackupSupported,
+  autoBackupDir,
+  onChooseAutoBackupDir,
+  onClearAutoBackupDir,
   onLoadSample,
   onRemoveSample,
   onRequestPersist,
@@ -40,6 +44,12 @@ export function FactnoteSettingsScreen({
   onShareJson: () => void;
   /** この端末で共有シートが使えるか。 */
   canShare: boolean;
+  /** このブラウザでフォルダ自動保存が使えるか（iPhone Safari は不可）。 */
+  autoBackupSupported: boolean;
+  /** 設定済みの自動保存フォルダ名（未設定なら null）。 */
+  autoBackupDir: string | null;
+  onChooseAutoBackupDir: () => void;
+  onClearAutoBackupDir: () => void;
   onLoadSample: () => void;
   onRemoveSample: () => void;
   onRequestPersist: () => void;
@@ -165,9 +175,56 @@ export function FactnoteSettingsScreen({
           <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
             記録は端末内にのみ保存されます。
             {canShare
-              ? '「共有して保存」→「"ファイル"に保存」→ iCloud Drive を選ぶと、iCloudにバックアップできます（自動保存はブラウザアプリの制約でできないため、週1回程度の手動バックアップをおすすめします）。'
+              ? '「共有して保存」→「"ファイル"に保存」→ iCloud Drive を選ぶと、iCloudにバックアップできます。'
               : '端末の空き容量が減るとブラウザが保存データを削除することがあるため、定期的なエクスポートをおすすめします。'}
           </p>
+        </Section>
+
+        <Section title="フォルダへ自動保存">
+          {autoBackupSupported ? (
+            <div className="rounded-card border border-border px-4 py-3">
+              <div className="text-[14px]">
+                {autoBackupDir ? (
+                  <span className="flex items-center gap-2">
+                    <CheckIcon width={16} height={16} className="text-success" />
+                    <span>
+                      保存先: <strong>{autoBackupDir}</strong>
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-text-secondary">未設定</span>
+                )}
+              </div>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
+                フォルダを一度選ぶと、記録を変更するたびに自動でそのフォルダへ保存します。
+                <strong>iCloud Drive の中のフォルダ</strong>を選べば、iCloudに自動で同期されます。
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={onChooseAutoBackupDir}
+                  disabled={busy}
+                  className="h-11 flex-1 rounded-full bg-accent text-[13.5px] font-semibold text-accent-on disabled:opacity-40"
+                >
+                  {autoBackupDir ? 'フォルダを変更' : 'フォルダを選んで自動保存'}
+                </button>
+                {autoBackupDir && (
+                  <button
+                    onClick={onClearAutoBackupDir}
+                    disabled={busy}
+                    className="h-11 rounded-full border border-border px-4 text-[13.5px] text-error active:opacity-70 disabled:opacity-40"
+                  >
+                    解除
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-card border border-border px-4 py-3 text-[12px] leading-relaxed text-text-secondary">
+              お使いのブラウザ（iPhone / iPad の Safari など）は、アプリが自動でフォルダへ書き込む機能に対応していません。これは Apple の制約で、どのWebアプリでも同じです。iPhone では上の
+              <strong>「共有して保存」</strong>で iCloud Drive に保存してください。パソコンの Chrome
+              などでこのページを開くと、フォルダを指定した自動保存が使えます。
+            </p>
+          )}
         </Section>
 
         <Section title="ストレージ">

@@ -48,6 +48,8 @@
   - プロフィールを IndexedDB + localStorage の**二重保存**にし、片方が消えても読み込み時に自動復元（ヒール）
   - キャンセル操作が完了済みの状態を巻き戻さないようガード
 
+- **フォルダ自動保存（`autoBackup.ts`）**: File System Access API でフォルダを一度指定すると、データ変更時・起動時・離脱時（visibilitychange hidden）に同名ファイルへ自動上書き保存。iCloud Drive 内のフォルダを選べば iCloud 同期される。**デスクトップ Chrome/Edge 等で有効**。iOS/iPadOS Safari は API 非対応のため設定画面で正直に案内し「共有して保存」へ誘導。権限が切れた場合は `resumeAutoBackup`（ユーザー操作）で再開
+
 ## 検証コマンドと最新の実行結果
 
 ```

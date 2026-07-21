@@ -87,6 +87,11 @@ async function collectExportBlob(): Promise<{ blob: Blob; count: number; fileNam
   };
 }
 
+/** バックアップ内容の Blob を作る（フォルダ自動保存 autoBackup.ts から使う）。 */
+export async function buildBackupBlob(): Promise<Blob> {
+  return (await collectExportBlob()).blob;
+}
+
 /** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
 export async function exportAllAsJson(): Promise<number> {
   const { blob, count, fileName } = await collectExportBlob();

@@ -4,6 +4,12 @@ import { useEffect, useState } from 'react';
 import { FactnoteSettingsScreen } from '@/components/screens/factnote/SettingsScreen';
 import { getPersistState, requestPersistentStorage, type PersistState } from '@/lib/factnote/db';
 import { canShareBackup, exportAllAsJson, shareBackupJson } from '@/lib/factnote/exportData';
+import {
+  chooseAutoBackupDirectory,
+  clearAutoBackupDirectory,
+  getAutoBackupDirName,
+  supportsDirectoryAutoBackup,
+} from '@/lib/factnote/autoBackup';
 import { loadFactnoteProfile, saveFactnoteProfile } from '@/lib/factnote/profile';
 import { isSampleDataLoaded, loadSampleData, removeSampleData } from '@/lib/factnote/sampleData';
 
@@ -14,6 +20,8 @@ export default function FactnoteSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [profileMarkdown, setProfileMarkdown] = useState('');
   const [canShare, setCanShare] = useState(false);
+  const [autoBackupSupported, setAutoBackupSupported] = useState(false);
+  const [autoBackupDir, setAutoBackupDir] = useState<string | null>(null);
 
   useEffect(() => {
     getPersistState().then(setPersistState);
@@ -22,6 +30,10 @@ export default function FactnoteSettingsPage() {
       .catch(() => setSampleLoaded(false));
     loadFactnoteProfile().then((p) => setProfileMarkdown(p.markdown));
     setCanShare(canShareBackup());
+    setAutoBackupSupported(supportsDirectoryAutoBackup());
+    getAutoBackupDirName()
+      .then(setAutoBackupDir)
+      .catch(() => setAutoBackupDir(null));
   }, []);
 
   async function run(label: string, fn: () => Promise<string>) {
@@ -44,6 +56,22 @@ export default function FactnoteSettingsPage() {
       message={message}
       profileMarkdown={profileMarkdown}
       canShare={canShare}
+      autoBackupSupported={autoBackupSupported}
+      autoBackupDir={autoBackupDir}
+      onChooseAutoBackupDir={() =>
+        run('自動保存フォルダの設定', async () => {
+          const name = await chooseAutoBackupDirectory();
+          setAutoBackupDir(name);
+          return `保存先を「${name}」に設定しました。以降、記録を変更するたびに自動保存されます。`;
+        })
+      }
+      onClearAutoBackupDir={() =>
+        run('自動保存の解除', async () => {
+          await clearAutoBackupDirectory();
+          setAutoBackupDir(null);
+          return '自動保存を解除しました。';
+        })
+      }
       onSaveProfile={(markdown) =>
         run('プロフィールの保存', async () => {
           const saved = await saveFactnoteProfile(markdown);

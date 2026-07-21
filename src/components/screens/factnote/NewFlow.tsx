@@ -17,6 +17,7 @@ import {
   saveRecord,
 } from '@/lib/factnote/db';
 import { conflictsOnSameDay } from '@/lib/factnote/aggregate';
+import { maybeAutoBackup } from '@/lib/factnote/autoBackup';
 import {
   cancelFactnoteJob,
   startAnalyzeJob,
@@ -475,6 +476,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
   async function saveWithoutAnalysis() {
     setSaving(true);
     const record = await persist((r) => applySupplement(r, supplement));
+    void maybeAutoBackup().catch(() => {});
     router.push(`/factnote/records/${record.id}`);
   }
 
@@ -520,6 +522,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
         },
       ],
     }));
+    void maybeAutoBackup().catch(() => {});
     router.push(`/factnote/records/${record.id}`);
   }
 
