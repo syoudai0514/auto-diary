@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangleIcon, EditIcon, ScaleIcon, TrashIcon, UsersIcon } from '@/components/icons';
+import {
+  AlertTriangleIcon,
+  EditIcon,
+  ImageIcon,
+  ScaleIcon,
+  TrashIcon,
+  UsersIcon,
+  XIcon,
+} from '@/components/icons';
 import { withRetryOn429 } from '@/lib/retry';
 import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi } from '@/lib/factnote/api';
@@ -46,6 +54,9 @@ export function FactnoteRecordDetailScreen({
   onUpdate,
   onAnalyze,
   onTranscribe,
+  onAddImages,
+  onRemoveAttachment,
+  attachmentBusy = false,
 }: {
   record: IncidentRecord;
   /** この記録に固定された未来メモ。 */
@@ -63,6 +74,12 @@ export function FactnoteRecordDetailScreen({
   onAnalyze?: () => void;
   /** 保存済みの音声から文字起こしを（再）実行する。 */
   onTranscribe?: () => void;
+  /** 画像を添付する（縮小・保存は呼び出し側）。 */
+  onAddImages?: (files: FileList) => void;
+  /** 添付を削除する。 */
+  onRemoveAttachment?: (id: string) => void;
+  /** 画像の追加処理中か。 */
+  attachmentBusy?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>(record.analysis ? 'analysis' : 'source');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -139,7 +156,14 @@ export function FactnoteRecordDetailScreen({
         {tab === 'transcript' && (
           <TranscriptTab record={record} transcribing={transcribing} onTranscribe={onTranscribe} />
         )}
-        {tab === 'source' && <SourceTab record={record} />}
+        {tab === 'source' && (
+          <SourceTab
+            record={record}
+            onAddImages={onAddImages}
+            onRemoveAttachment={onRemoveAttachment}
+            attachmentBusy={attachmentBusy}
+          />
+        )}
 
         {/* 長期分析への導線と分類の修正（追加依頼 §30） */}
         <Section title="長期分析">
@@ -641,7 +665,10 @@ function TranscriptTab({
   if (!record.transcript && !record.correctedTranscript) {
     // 音声（原本）は保存済みだが文字起こしがまだ無い状態。
     // 処理が中断されても録音は失われていないので、ここから再実行できる
-    if (record.attachments.length > 0 && onTranscribe) {
+    const hasAudio = record.attachments.some(
+      (a) => a.mimeType.startsWith('audio/') || a.mimeType.startsWith('video/'),
+    );
+    if (hasAudio && onTranscribe) {
       return (
         <div className="mt-10 text-center">
           <p className="text-[14px] leading-relaxed text-text-secondary">
@@ -684,7 +711,20 @@ function TranscriptTab({
   );
 }
 
-function SourceTab({ record }: { record: IncidentRecord }) {
+function SourceTab({
+  record,
+  onAddImages,
+  onRemoveAttachment,
+  attachmentBusy,
+}: {
+  record: IncidentRecord;
+  onAddImages?: (files: FileList) => void;
+  onRemoveAttachment?: (id: string) => void;
+  attachmentBusy?: boolean;
+}) {
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const images = record.attachments.filter((a) => a.mimeType.startsWith('image/'));
+  const others = record.attachments.filter((a) => !a.mimeType.startsWith('image/'));
   return (
     <div className="pb-4">
       <Section title="記録情報">
@@ -722,10 +762,56 @@ function SourceTab({ record }: { record: IncidentRecord }) {
         </Section>
       )}
 
-      {record.attachments.length > 0 && (
+      {/* 画像（写真・スクリーンショット）。日記と一緒に残せる原本。 */}
+      <Section title="画像">
+        {images.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {images.map((a) => (
+              <AttachmentImage
+                key={a.id}
+                attachmentId={a.id}
+                fileName={a.fileName}
+                onRemove={onRemoveAttachment ? () => onRemoveAttachment(a.id) : undefined}
+              />
+            ))}
+          </div>
+        )}
+        {onAddImages && (
+          <>
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              disabled={attachmentBusy}
+              className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-card border border-border bg-surface text-[14px] font-medium active:opacity-70 disabled:opacity-40"
+            >
+              <ImageIcon width={18} height={18} />
+              {attachmentBusy ? '追加しています…' : images.length > 0 ? '画像を追加' : '写真・スクショを添付'}
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) onAddImages(e.target.files);
+                e.target.value = '';
+              }}
+              className="hidden"
+              aria-label="画像を添付"
+            />
+            <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
+              LINEやメールのスクリーンショット、写真などを添付できます。端末内に保存され、送信はされません。
+            </p>
+          </>
+        )}
+        {images.length === 0 && !onAddImages && (
+          <p className="text-[13px] text-text-tertiary">画像はありません。</p>
+        )}
+      </Section>
+
+      {others.length > 0 && (
         <Section title="添付ファイル（原本）">
           <ul className="space-y-2">
-            {record.attachments.map((a) => (
+            {others.map((a) => (
               <li key={a.id} className="rounded-card border border-border px-4 py-3 text-[13.5px]">
                 <div className="font-medium">{a.fileName}</div>
                 <div className="mt-0.5 text-[12px] text-text-tertiary">
@@ -739,6 +825,106 @@ function SourceTab({ record }: { record: IncidentRecord }) {
             ))}
           </ul>
         </Section>
+      )}
+    </div>
+  );
+}
+
+/** 添付画像のサムネイル（タップで拡大）。Blobは都度 ObjectURL 化して表示する。 */
+function AttachmentImage({
+  attachmentId,
+  fileName,
+  onRemove,
+}: {
+  attachmentId: string;
+  fileName: string;
+  onRemove?: () => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    getAttachmentBlob(attachmentId)
+      .then((blob) => {
+        if (blob) {
+          objectUrl = URL.createObjectURL(blob);
+          setUrl(objectUrl);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachmentId]);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => url && setExpanded(true)}
+        className="block aspect-square w-full overflow-hidden rounded-card border border-border bg-surface active:opacity-80"
+        aria-label={`${fileName}を拡大`}
+      >
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={fileName} className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full items-center justify-center text-[11px] text-text-tertiary">
+            …
+          </span>
+        )}
+      </button>
+      {onRemove && (
+        <button
+          onClick={() => setConfirmRemove(true)}
+          aria-label="画像を削除"
+          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-bg/80 text-error active:opacity-70"
+        >
+          <XIcon width={15} height={15} />
+        </button>
+      )}
+
+      {confirmRemove && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-card bg-bg/95 p-2 text-center">
+          <span className="text-[11px]">削除しますか？</span>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => {
+                onRemove?.();
+                setConfirmRemove(false);
+              }}
+              className="rounded-full bg-error px-2.5 py-1 text-[11px] font-semibold text-white"
+            >
+              削除
+            </button>
+            <button
+              onClick={() => setConfirmRemove(false)}
+              className="rounded-full border border-border px-2.5 py-1 text-[11px]"
+            >
+              やめる
+            </button>
+          </div>
+        </div>
+      )}
+
+      {expanded && url && (
+        <div
+          onClick={() => setExpanded(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          role="dialog"
+          aria-label={fileName}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={fileName} className="max-h-full max-w-full object-contain" />
+          <button
+            onClick={() => setExpanded(false)}
+            aria-label="閉じる"
+            className="absolute right-4 top-[calc(env(safe-area-inset-top)+16px)] flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white"
+          >
+            <XIcon width={22} height={22} />
+          </button>
+        </div>
       )}
     </div>
   );

@@ -52,7 +52,7 @@ const sampleResult = {
   isRepairAction: false,
 };
 
-export async function run({ base, invite, newPage }) {
+export async function run({ base, invite, newPage, imageFile }) {
   const page = await newPage();
 
   let analyzeBody = null;
@@ -185,6 +185,16 @@ export async function run({ base, invite, newPage }) {
   await page.click('button:has-text("保存") >> nth=0');
   await page.waitForSelector('text=手直ししたタイトル', { timeout: 5000 });
   console.log('  OK: existing diary can be edited after save');
+
+  // --- 原本タブに画像を添付できる ---
+  await page.click('[role="tab"]:has-text("原本")');
+  const [imgChooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.click('button:has-text("写真・スクショを添付")'),
+  ]);
+  await imgChooser.setFiles([imageFile]);
+  await page.waitForSelector('img[alt="tiny.jpg"], img[alt="tiny.png"]', { timeout: 10000 });
+  console.log('  OK: image can be attached to the record alongside the diary');
 
   // --- 記録の日付・内容を後から編集できる ---
   await page.click('a:has-text("編集")');

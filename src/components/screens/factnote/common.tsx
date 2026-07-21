@@ -105,6 +105,7 @@ export function RecordBadges({ record }: { record: IncidentRecord }) {
       {record.isRepairAction && <Badge label="修復" tone="success" />}
       {record.childrenPresent === 'yes' && <Badge label="子ども同席" />}
       {record.diaryVersions.length > 0 && <Badge label="日記あり" />}
+      {record.attachments.some((a) => a.mimeType.startsWith('image/')) && <Badge label="画像あり" />}
     </div>
   );
 }

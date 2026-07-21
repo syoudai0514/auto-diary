@@ -97,6 +97,15 @@ async function main() {
   const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'vd-e2e-'));
   const audioFile = path.join(tmpDir, 'tiny.webm');
   writeFileSync(audioFile, Buffer.alloc(2048, 1));
+  // 1x1 の有効なPNG（画像添付フローの検証用）
+  const imageFile = path.join(tmpDir, 'tiny.png');
+  writeFileSync(
+    imageFile,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  );
 
   let browser = null;
   let failed = false;
@@ -129,7 +138,7 @@ async function main() {
     for (const [name, flow] of flows) {
       console.log(`[e2e] flow: ${name}`);
       try {
-        await flow({ base, invite: INVITE, newPage, audioFile });
+        await flow({ base, invite: INVITE, newPage, audioFile, imageFile });
         console.log(`[e2e] flow ${name}: PASS`);
       } catch (err) {
         failed = true;
