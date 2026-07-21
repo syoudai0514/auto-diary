@@ -24,6 +24,7 @@ import { run as appleGateFlow } from './flows/apple-gate.mjs';
 import { run as talkFlow } from './flows/talk.mjs';
 import { run as factnoteFlow } from './flows/factnote.mjs';
 import { run as factnoteLongtermFlow } from './flows/factnote-longterm.mjs';
+import { run as factnoteLockFlow } from './flows/factnote-lock.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nextBin = path.join(repoRoot, 'node_modules', 'next', 'dist', 'bin', 'next');
@@ -134,6 +135,7 @@ async function main() {
       ['talk', talkFlow],
       ['factnote', factnoteFlow],
       ['factnote-longterm', factnoteLongtermFlow],
+      ['factnote-lock', factnoteLockFlow],
     ];
     for (const [name, flow] of flows) {
       console.log(`[e2e] flow: ${name}`);

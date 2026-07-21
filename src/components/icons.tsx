@@ -275,6 +275,27 @@ export function ShieldIcon(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function LockIcon(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(p)}>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+export function FingerprintIcon(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 10a2 2 0 0 1 2 2c0 3-1 5.5-2 7" />
+      <path d="M8.5 7.2A5.5 5.5 0 0 1 17.5 12c0 1.2-.2 2.4-.5 3.5" />
+      <path d="M6.5 12a5.5 5.5 0 0 1 .3-1.8" />
+      <path d="M9.5 12a2.5 2.5 0 0 1 5 0c0 2.2-.6 4.3-1.5 6.2" />
+      <path d="M7 15.5c.5 1.5.7 3 .7 4.5" />
+    </svg>
+  );
+}
+
 export function HomeIcon(p: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base(p)}>

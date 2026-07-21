@@ -8,6 +8,7 @@ import type { PersistState } from '@/lib/factnote/db';
 import { FACTNOTE_PROFILE_PLACEHOLDER } from '@/lib/factnote/profile';
 import { AutoTextarea } from '@/components/screens/common';
 import { FactnoteHeader, Section } from './common';
+import { LockSettings } from './LockSettings';
 import { FactnoteTabBar } from './TabBar';
 
 /**
@@ -91,6 +92,8 @@ export function FactnoteSettingsScreen({
       <FactnoteHeader title="設定" />
 
       <div className="flex-1 overflow-y-auto px-6 pb-4">
+        <LockSettings />
+
         <Section title="プロフィール（あなたと登場人物について）">
           <p className="-mt-1 mb-2 text-[12px] leading-relaxed text-text-secondary">
             誰が「自分」で、相手や家族をどう呼ぶかをAIに伝えます。録音の話者ラベルが「A / B」ではなく「私 / 妻」のような呼び名になり、分析での自分側・相手側の判断も正確になります。AI処理のときだけ送信され、サーバーには保存されません。

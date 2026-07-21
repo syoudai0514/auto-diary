@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LockGate } from '@/components/screens/factnote/LockGate';
 import { FACTNOTE_APP_NAME, FACTNOTE_APP_TAGLINE } from '@/lib/factnote/appConfig';
 
 /**
@@ -26,5 +27,9 @@ export const metadata: Metadata = {
 };
 
 export default function FactnoteLayout({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto w-full max-w-md animate-screen-in">{children}</div>;
+  return (
+    <div className="mx-auto w-full max-w-md animate-screen-in">
+      <LockGate>{children}</LockGate>
+    </div>
+  );
 }

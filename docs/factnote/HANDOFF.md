@@ -63,6 +63,13 @@
 
 - **Markdownエクスポート（フィードバック対応）**: `markdown.ts` で記録を人間・LLMが読みやすいMDに変換（記録情報・原本・分析の全セクション・論点別責任表・日記を見出しで分離）。設定から全件を、記録詳細から1件を書き出し（共有シート対応端末は共有、なければダウンロード）。バックアップ日時は更新しない（復元用はJSON）。テスト+E2E追加
 
+- **画面ロック（PIN + 生体認証／フィードバック「最重要」対応）**: `src/lib/factnote/lock.ts` にロジックを集約。
+  - **PIN**: PBKDF2-SHA256（150k回・16byteソルト）でハッシュ化し localStorage（`factnote-lock-pin`）に保存。平文は保存しない。照合は定数時間比較。
+  - **生体認証**: WebAuthn プラットフォーム認証器（Face ID / Touch ID）。`isUserVerifyingPlatformAuthenticatorAvailable` で対応判定、`navigator.credentials.create/get`（`userVerification:'required'`）。rawId を base64 で保存（`factnote-lock-cred`）。**PINを常にフォールバックに残す**（締め出し＝データ喪失を防ぐため、生体のみのロックは不可）。
+  - **ゲート**: `LockGate`（`app/factnote/layout.tsx` で全 `/factnote/*` を包む）。設定済みかつ未解除ならロック画面（テンキー＋生体ボタン）を表示し中身を隠す。解除状態はメモリのみ（`subscribeLock` pub/sub）＝**リロードで必ず再ロック**。`visibilitychange` でバックグラウンド滞在が `getAutoLockMs()`（既定60秒、設定で「すぐ/1分/5分」）を超えたら再ロック。
+  - **設定UI**: `LockSettings`（設定画面の先頭）でPIN設定・変更（現PIN確認付き）、生体認証の登録/解除、自動ロック時間、ロック解除（現PIN確認付き）。「これは目隠しでデータ自体は暗号化されない／PINを忘れると解除不可」の注記あり。
+  - `lock.test.ts`（PIN照合・非平文保存・ソルト差分・remove・オートロック値）+ E2E `factnote-lock.mjs`（PIN登録→リロードでロック→誤PIN拒否→正PIN解除）追加。
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -72,6 +79,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 
 - Phase 2 完了時点: typecheck ✅ / test 320件 ✅ / lint ✅ / build ✅ / test:e2e 全5フロー PASS
 - 長期分析3機能の追加完了時点: typecheck ✅ / test **349件** ✅ / lint ✅ / build ✅ / **test:e2e 全6フロー PASS（既存4フロー + factnote + factnote-longterm）** ✅
+- 画面ロック（PIN + 生体認証）追加完了時点: typecheck ✅ / test **372件** ✅ / lint ✅ / build ✅ / **test:e2e 全7フロー PASS（+ factnote-lock）** ✅
 
 ## 次にやること（順番付き — Phase 3 / P1）
 
@@ -91,5 +99,6 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 
 - 記録詳細の添付音声は再生UI未実装（Blobは attachments ストアに保存済み。`URL.createObjectURL` で再生ボタンを付けるだけ）
 - 週次・月次・パターン横断ビューは未着手（P1/P2）
-- PINロック・匿名化・PDF出力は P2（PLAN.md §5）
+- PINロック（+生体認証）は実装済み。匿名化・PDF出力は P2（PLAN.md §5）
+- ロックは「画面の目隠し」で IndexedDB のデータ自体は暗号化していない（P2でPIN由来鍵での暗号化を検討）
 - E2E実行時に playwright のバージョンによっては `E2E_CHROMIUM_PATH` の指定が必要
