@@ -106,9 +106,8 @@ export async function isBackupStale(maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise
   return !Number.isFinite(t) || Date.now() - t > maxAgeMs;
 }
 
-/** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
-export async function exportAllAsJson(): Promise<number> {
-  const { blob, count, fileName } = await collectExportBlob();
+/** Blob を指定ファイル名でダウンロードする（共通）。 */
+function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
@@ -121,8 +120,68 @@ export async function exportAllAsJson(): Promise<number> {
     // click 直後の revoke は一部ブラウザでダウンロード失敗するため遅延させる
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+}
+
+/** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */
+export async function exportAllAsJson(): Promise<number> {
+  const { blob, count, fileName } = await collectExportBlob();
+  downloadBlob(blob, fileName);
   await setMeta(META_LAST_BACKUP_AT, new Date().toISOString());
   return count;
+}
+
+function markdownFileName(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${FACTNOTE_EXPORT_PREFIX}-export-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.md`;
+}
+
+/**
+ * 全記録を Markdown で書き出す（他のAI・エディタで内容を分析しやすい形式）。
+ * 共有シートが使える端末では共有（iCloud等に保存可）、なければダウンロード。
+ * バックアップ日時は更新しない（JSONと違い完全な復元用データではないため）。
+ */
+export async function exportAllAsMarkdown(): Promise<{ count: number; shared: boolean }> {
+  const { recordsToMarkdown } = await import('./markdown');
+  const records = await listRecords();
+  const md = recordsToMarkdown(records);
+  const fileName = markdownFileName();
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+
+  if (canShareBackup()) {
+    const file = new File([blob], fileName, { type: 'text/markdown' });
+    try {
+      await navigator.share({ files: [file], title: '事実ノート（Markdown）' });
+      return { count: records.length, shared: true };
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        return { count: records.length, shared: false };
+      }
+      // 共有不可ならダウンロードにフォールバック
+    }
+  }
+  downloadBlob(blob, fileName);
+  return { count: records.length, shared: false };
+}
+
+/** 1件の記録を Markdown で書き出す（記録詳細から使う）。 */
+export async function exportRecordAsMarkdown(record: IncidentRecord): Promise<{ shared: boolean }> {
+  const { recordToMarkdown } = await import('./markdown');
+  const md = recordToMarkdown(record);
+  const safeTitle = (record.title || '無題の記録').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
+  const fileName = `${FACTNOTE_EXPORT_PREFIX}-${safeTitle}.md`;
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+
+  if (canShareBackup()) {
+    const file = new File([blob], fileName, { type: 'text/markdown' });
+    try {
+      await navigator.share({ files: [file], title: record.title || '事実ノート' });
+      return { shared: true };
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return { shared: false };
+    }
+  }
+  downloadBlob(blob, fileName);
+  return { shared: false };
 }
 
 /** この端末でファイル共有（共有シート）が使えるか。 */

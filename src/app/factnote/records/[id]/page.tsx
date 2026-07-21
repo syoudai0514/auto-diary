@@ -14,6 +14,7 @@ import {
   trashRecord,
 } from '@/lib/factnote/db';
 import { maybeAutoBackup } from '@/lib/factnote/autoBackup';
+import { exportRecordAsMarkdown } from '@/lib/factnote/exportData';
 import { prepareImageBlob } from '@/lib/factnote/image';
 import type { Attachment } from '@/lib/factnote/types';
 import {
@@ -229,6 +230,7 @@ export default function FactnoteRecordDetailPage() {
       onAddImages={(files) => void addImages(files)}
       onRemoveAttachment={(id) => void removeAttachment(id)}
       attachmentBusy={attachmentBusy}
+      onExportMarkdown={() => void exportRecordAsMarkdown(record)}
       onUpdate={(updated) => void mergeUpdate(updated)}
       onDelete={async () => {
         await trashRecord(record.id);

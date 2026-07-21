@@ -211,8 +211,11 @@ export async function run({ base, invite, newPage, imageFile }) {
   await page.waitForSelector('text=分析済み', { timeout: 5000 });
   console.log('  OK: record appears in list with analyzed badge');
 
-  // --- JSONエクスポート ---
+  // --- Markdown / JSON エクスポート ---
   await page.goto(`${base}/factnote/settings`);
+  await page.click('text=すべての記録をMarkdownで書き出す');
+  await page.waitForSelector('text=Markdownで', { timeout: 10000 });
+  console.log('  OK: Markdown export works');
   await page.click('text=すべての記録をJSONでエクスポート');
   await page.waitForSelector('text=1件の記録をエクスポートしました', { timeout: 10000 });
   console.log('  OK: JSON export works');

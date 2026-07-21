@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertTriangleIcon,
   EditIcon,
+  FileTextIcon,
   ImageIcon,
   ScaleIcon,
   TrashIcon,
@@ -57,6 +58,7 @@ export function FactnoteRecordDetailScreen({
   onAddImages,
   onRemoveAttachment,
   attachmentBusy = false,
+  onExportMarkdown,
 }: {
   record: IncidentRecord;
   /** この記録に固定された未来メモ。 */
@@ -80,6 +82,8 @@ export function FactnoteRecordDetailScreen({
   onRemoveAttachment?: (id: string) => void;
   /** 画像の追加処理中か。 */
   attachmentBusy?: boolean;
+  /** この記録を Markdown で書き出す。 */
+  onExportMarkdown?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(record.analysis ? 'analysis' : 'source');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -184,6 +188,18 @@ export function FactnoteRecordDetailScreen({
               関係人物の客観カルテを見る
             </Link>
           </div>
+        </Section>
+
+        <Section title="書き出し">
+          <button
+            onClick={onExportMarkdown}
+            disabled={!onExportMarkdown}
+            className="flex min-h-[52px] w-full items-center gap-2.5 rounded-card border border-border bg-surface px-4 text-[14.5px] font-medium active:opacity-70 disabled:opacity-40"
+          >
+            <FileTextIcon width={18} height={18} className="text-accent" />
+            この記録をMarkdownで書き出す
+            <span className="ml-auto text-[11px] text-text-tertiary">他のAIで分析</span>
+          </button>
         </Section>
 
         <Section title="分類の修正（誤分類はここで直せます）">

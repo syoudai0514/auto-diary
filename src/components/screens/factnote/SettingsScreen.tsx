@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckIcon, DownloadIcon, ShareIcon } from '@/components/icons';
+import { CheckIcon, DownloadIcon, FileTextIcon, ShareIcon } from '@/components/icons';
 import { getGeminiKeyStatus, saveGeminiKey } from '@/lib/api';
 import { FACTNOTE_APP_NAME, FACTNOTE_APP_TAGLINE } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
@@ -22,6 +22,7 @@ export function FactnoteSettingsScreen({
   profileMarkdown,
   onSaveProfile,
   onExportJson,
+  onExportMarkdown,
   onShareJson,
   canShare,
   autoBackupSupported,
@@ -40,6 +41,8 @@ export function FactnoteSettingsScreen({
   profileMarkdown: string;
   onSaveProfile: (markdown: string) => void;
   onExportJson: () => void;
+  /** 全記録を Markdown で書き出す（他ツールでの分析用）。 */
+  onExportMarkdown: () => void;
   /** 共有シート経由のバックアップ（iCloud Drive等へ保存できる）。 */
   onShareJson: () => void;
   /** この端末で共有シートが使えるか。 */
@@ -164,6 +167,14 @@ export function FactnoteSettingsScreen({
               </button>
             )}
             <button
+              onClick={onExportMarkdown}
+              disabled={busy}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-card border border-border bg-surface text-[14px] font-medium active:opacity-70 disabled:opacity-40"
+            >
+              <FileTextIcon width={18} height={18} />
+              すべての記録をMarkdownで書き出す
+            </button>
+            <button
               onClick={onExportJson}
               disabled={busy}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-card border border-border bg-surface text-[14px] font-medium active:opacity-70 disabled:opacity-40"
@@ -177,6 +188,8 @@ export function FactnoteSettingsScreen({
             {canShare
               ? '「共有して保存」→「"ファイル"に保存」→ iCloud Drive を選ぶと、iCloudにバックアップできます。'
               : '端末の空き容量が減るとブラウザが保存データを削除することがあるため、定期的なエクスポートをおすすめします。'}
+            <br />
+            Markdownは他のAIやエディタで内容を読み書きしやすい形式です（復元用のバックアップはJSONを使ってください）。
           </p>
         </Section>
 

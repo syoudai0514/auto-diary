@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { FactnoteSettingsScreen } from '@/components/screens/factnote/SettingsScreen';
 import { getPersistState, requestPersistentStorage, type PersistState } from '@/lib/factnote/db';
-import { canShareBackup, exportAllAsJson, shareBackupJson } from '@/lib/factnote/exportData';
+import {
+  canShareBackup,
+  exportAllAsJson,
+  exportAllAsMarkdown,
+  shareBackupJson,
+} from '@/lib/factnote/exportData';
 import {
   chooseAutoBackupDirectory,
   clearAutoBackupDirectory,
@@ -83,6 +88,14 @@ export default function FactnoteSettingsPage() {
         run('エクスポート', async () => {
           const count = await exportAllAsJson();
           return `${count}件の記録をエクスポートしました。ファイルを安全な場所に保管してください。`;
+        })
+      }
+      onExportMarkdown={() =>
+        run('Markdown書き出し', async () => {
+          const { count, shared } = await exportAllAsMarkdown();
+          return shared
+            ? `${count}件の記録をMarkdownで共有しました。`
+            : `${count}件の記録をMarkdownで書き出しました。`;
         })
       }
       onShareJson={() =>
