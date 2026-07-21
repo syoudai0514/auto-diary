@@ -2,6 +2,7 @@
 
 import { FACTNOTE_EXPORT_PREFIX } from './appConfig';
 import {
+  getMeta,
   listFlatChecks,
   listFutureMemos,
   listPersons,
@@ -90,6 +91,19 @@ async function collectExportBlob(): Promise<{ blob: Blob; count: number; fileNam
 /** バックアップ内容の Blob を作る（フォルダ自動保存 autoBackup.ts から使う）。 */
 export async function buildBackupBlob(): Promise<Blob> {
   return (await collectExportBlob()).blob;
+}
+
+/** 最終バックアップ日時（ISO。未実施なら undefined）。 */
+export async function loadLastBackupAt(): Promise<string | undefined> {
+  return getMeta<string>(META_LAST_BACKUP_AT).catch(() => undefined);
+}
+
+/** バックアップが古い（この期間以上前 or 未実施）か。既定3日。 */
+export async function isBackupStale(maxAgeMs = 3 * 24 * 60 * 60 * 1000): Promise<boolean> {
+  const last = await loadLastBackupAt();
+  if (!last) return true;
+  const t = Date.parse(last);
+  return !Number.isFinite(t) || Date.now() - t > maxAgeMs;
 }
 
 /** 全記録と長期分析データをJSONファイルとしてダウンロードし、最終バックアップ日時を更新する。 */

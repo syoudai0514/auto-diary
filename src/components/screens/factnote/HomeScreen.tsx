@@ -6,6 +6,7 @@ import { FACTNOTE_APP_NAME } from '@/lib/factnote/appConfig';
 import type { PersistState } from '@/lib/factnote/db';
 import type { FutureSelfMemo, IncidentRecord } from '@/lib/factnote/types';
 import { FactnoteHeader, RecordRow, formatRecordDate } from './common';
+import { BackupPrompt } from './BackupPrompt';
 import { FutureMemoCard } from './FutureMemoCard';
 import { FactnoteTabBar } from './TabBar';
 
@@ -84,23 +85,29 @@ export function FactnoteHomeScreen({
         )}
 
         {/* バックアップ状況（iOSのIndexedDB退避リスクを正直に伝える。依頼書 §21/§26） */}
-        {(backupStale || persistState !== 'granted') && records.length > 0 && (
+        {backupStale && records.length > 0 ? (
+          <div className="mb-4 mt-6 rounded-card bg-warning-soft px-4 py-3">
+            <div className="text-[12px] font-medium">
+              最終バックアップ: {lastBackupAt ? formatRecordDate(lastBackupAt) : 'まだありません'}
+            </div>
+            {/* ここからワンタップでバックアップできる（設定へ飛ばさない） */}
+            <div className="mt-2">
+              <BackupPrompt compact />
+            </div>
+          </div>
+        ) : persistState !== 'granted' && records.length > 0 ? (
           <Link
             href="/factnote/settings"
-            className={`mb-4 mt-6 block rounded-card px-4 py-3 text-[12px] leading-relaxed active:opacity-70 ${
-              backupStale ? 'bg-warning-soft' : 'border border-border text-text-secondary'
-            }`}
+            className="mb-4 mt-6 block rounded-card border border-border px-4 py-3 text-[12px] leading-relaxed text-text-secondary active:opacity-70"
           >
             <div className="font-medium">
               最終バックアップ: {lastBackupAt ? formatRecordDate(lastBackupAt) : 'まだありません'}
             </div>
             <div className="mt-0.5 text-text-secondary">
-              {backupStale
-                ? 'バックアップが1週間以上前です。設定から保存しておくと安心です。'
-                : '端末の空き容量が減ると、ブラウザが保存データを削除することがあります。'}
+              端末の空き容量が減ると、ブラウザが保存データを削除することがあります。
             </div>
           </Link>
-        )}
+        ) : null}
       </div>
 
       {/* フッター: 親指到達域のメイン入力（依頼書 §8）+ タブバー */}

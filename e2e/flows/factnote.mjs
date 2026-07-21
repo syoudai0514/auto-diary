@@ -147,8 +147,11 @@ export async function run({ base, invite, newPage }) {
   }
   await page.fill('input[aria-label="日記のタイトル"]', '荷物の受け取りを忘れた日（編集済み）');
   await page.click('button:has-text("保存する")');
+  // 保存完了画面 → ワンタップ・バックアップ導線を経て記録へ
+  await page.waitForSelector('text=保存しました', { timeout: 10000 });
+  await page.click('button:has-text("この記録を見る")');
   await page.waitForURL('**/factnote/records/*', { timeout: 10000 });
-  console.log('  OK: diary generated, edited and saved');
+  console.log('  OK: diary saved, completion screen with backup prompt shown');
 
   // --- 詳細タブ（分析・日記・原本の分離表示） ---
   await page.waitForSelector('text=あなたのミスです', { timeout: 10000 });

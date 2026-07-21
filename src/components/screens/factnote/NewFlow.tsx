@@ -51,9 +51,10 @@ import {
   ProcessingScreen,
 } from '@/components/screens/StatusScreens';
 import { AutoTextarea } from '@/components/screens/common';
-import { MicIcon, UploadIcon } from '@/components/icons';
+import { CheckIcon, MicIcon, UploadIcon } from '@/components/icons';
 import { AnalysisView } from './AnalysisView';
 import { FactnoteHeader } from './common';
+import { BackupPrompt } from './BackupPrompt';
 import { FutureMemoCard, markMemoShown } from './FutureMemoCard';
 import { SupplementStep } from './SupplementStep';
 
@@ -72,6 +73,7 @@ type Step =
   | 'diaryMode'
   | 'diaryGenerating'
   | 'diaryEdit'
+  | 'saved'
   | 'permission'
   | 'empty'
   | 'error';
@@ -477,7 +479,8 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     setSaving(true);
     const record = await persist((r) => applySupplement(r, supplement));
     void maybeAutoBackup().catch(() => {});
-    router.push(`/factnote/records/${record.id}`);
+    setSaving(false);
+    setStep('saved');
   }
 
   // --- 日記 -----------------------------------------------------------------------
@@ -523,7 +526,8 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
       ],
     }));
     void maybeAutoBackup().catch(() => {});
-    router.push(`/factnote/records/${record.id}`);
+    setSaving(false);
+    setStep('saved');
   }
 
   function retryFromError() {
@@ -843,6 +847,41 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
             className="mb-3 mt-2 h-11 w-full rounded-full text-[14px] text-text-secondary"
           >
             別のモードで作り直す
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'saved') {
+    const record = ensureRecord();
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center px-7 pb-safe pt-safe text-center">
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-surface text-success">
+          <CheckIcon width={32} height={32} />
+        </div>
+        <h1 className="text-[20px] font-bold">保存しました</h1>
+        <p className="mt-1 max-w-[280px] text-[13.5px] text-text-secondary">
+          {record.title || 'この記録'}を端末に保存しました。
+        </p>
+
+        {/* いいタイミングでのワンタップ・バックアップ導線 */}
+        <div className="mt-6 w-full max-w-[300px]">
+          <BackupPrompt />
+        </div>
+
+        <div className="mt-8 flex w-full max-w-[300px] flex-col gap-2">
+          <button
+            onClick={() => router.push(`/factnote/records/${record.id}`)}
+            className="h-12 w-full rounded-full bg-accent text-[15px] font-semibold text-accent-on shadow-cta active:opacity-90"
+          >
+            この記録を見る
+          </button>
+          <button
+            onClick={() => router.push('/factnote')}
+            className="h-11 w-full rounded-full text-[14px] text-text-secondary active:opacity-60"
+          >
+            ホームへ
           </button>
         </div>
       </div>
