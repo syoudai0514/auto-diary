@@ -20,17 +20,21 @@ const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
 
 /**
  * 自分自身の出来事を客観視するための内省アプリ、という用途向けの安全設定。
- * Geminiの既定の閾値は、言い合いの描写や相手への不満（特に子どもが関係する場面）を
- * 実際の加害目的コンテンツと区別できず誤ってブロックすることがあり、分析結果が
- * 空文字で返って「分析に失敗しました」になる原因になっていた。このアプリは
- * ユーザー自身の体験の記録・分析用途に閉じており（第三者への攻撃文の生成は行わない）、
- * 危険性の兆候自体はモデルに safetyFlags として検出・提示させる設計のため、
- * 実害カテゴリの閾値を「高い確度の場合のみブロック」に緩める。
+ * Geminiの既定の閾値は、言い合いの描写や相手への不満（特に子どもが関係する場面や、
+ * 深刻な衝突の描写）を実際の加害目的コンテンツと区別できず誤ってブロックすることがあり、
+ * 分析結果が空文字で返って「分析に失敗しました」になる原因になっていた
+ * （BLOCK_ONLY_HIGH でもなお誤ブロックが確認されたため BLOCK_NONE まで緩めている）。
+ * このアプリはユーザー自身の体験の記録・分析用途に閉じており（第三者への攻撃文の生成は
+ * 行わない）、むしろ危険性の兆候（暴力・自傷・子どもの安全等）自体をモデルに
+ * safetyFlags として検出・提示させ、ユーザー自身の安全につなげる設計のため、
+ * ブロックによって分析自体が止まってしまう方が実害が大きい。
+ * BLOCK_NONE は閾値でのブロックを止めるだけで安全性評価（safetyRatings）自体は
+ * 引き続き返るため、ブロック理由の診断ログには使える。
  */
 export const REFLECTIVE_SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
 export function chatModel(): string {

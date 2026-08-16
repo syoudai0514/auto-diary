@@ -218,13 +218,20 @@ const BLOCKED_REASONS = new Set([
   'OTHER',
 ]);
 
+interface SafetyRatingInfo {
+  category?: string;
+  probability?: string;
+  blocked?: boolean;
+}
+
 interface CandidateInfo {
   finishReason?: string;
+  safetyRatings?: SafetyRatingInfo[];
 }
 
 interface FeedbackInfo {
   candidates?: CandidateInfo[];
-  promptFeedback?: { blockReason?: string };
+  promptFeedback?: { blockReason?: string; safetyRatings?: SafetyRatingInfo[] };
 }
 
 function finishReasonOf(response: FeedbackInfo): string {
@@ -235,6 +242,17 @@ function finishReasonOf(response: FeedbackInfo): string {
 function isBlockedResponse(response: FeedbackInfo): boolean {
   if (response.promptFeedback?.blockReason) return true;
   return BLOCKED_REASONS.has(finishReasonOf(response));
+}
+
+/**
+ * ブロック理由の診断用サマリ（カテゴリ・確率のみ。本文は一切含まない）。
+ * safetySettings 調整の要否を判断するためログにだけ出す。
+ */
+function blockedDiagnostics(response: FeedbackInfo): string {
+  const ratings = response.promptFeedback?.safetyRatings ?? response.candidates?.[0]?.safetyRatings ?? [];
+  const flagged = ratings.filter((r) => r.blocked || r.probability === 'HIGH' || r.probability === 'MEDIUM');
+  if (flagged.length === 0) return '';
+  return flagged.map((r) => `${r.category}=${r.probability}`).join(', ');
 }
 
 export interface AnalyzeIncidentOptions {
@@ -259,6 +277,7 @@ export async function analyzeIncident(
   let truncated = false;
   let blocked = false;
   let lastReason = '';
+  let lastDiagnostics = '';
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const contents = [
       { role: 'user' as const, parts: [{ text: user }] },
@@ -295,6 +314,7 @@ export async function analyzeIncident(
     truncated = finishReasonOf(response) === 'MAX_TOKENS';
     blocked = isBlockedResponse(response);
     lastReason = response.promptFeedback?.blockReason || finishReasonOf(response) || '';
+    lastDiagnostics = blockedDiagnostics(response);
     // ブロックは再試行しても結果が変わらないため、ここで打ち切る（内容はログに出さない）
     if (blocked) break;
   }
@@ -306,7 +326,9 @@ export async function analyzeIncident(
     );
   }
   if (blocked) {
-    console.error(`[factnote-analyze] blocked: ${lastReason || 'unknown'}`);
+    console.error(
+      `[factnote-analyze] blocked: ${lastReason || 'unknown'}${lastDiagnostics ? ` (${lastDiagnostics})` : ''}`,
+    );
     throw new IncidentAnalysisError(
       '内容が安全フィルタによりブロックされ、分析結果を生成できませんでした。表現を少し和らげるか、固有名詞・詳細な描写を控えて再度お試しください。',
       'blocked',

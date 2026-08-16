@@ -80,17 +80,20 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - Phase 2 完了時点: typecheck ✅ / test 320件 ✅ / lint ✅ / build ✅ / test:e2e 全5フロー PASS
 - 長期分析3機能の追加完了時点: typecheck ✅ / test **349件** ✅ / lint ✅ / build ✅ / **test:e2e 全6フロー PASS（既存4フロー + factnote + factnote-longterm）** ✅
 - 画面ロック（PIN + 生体認証）追加完了時点: typecheck ✅ / test **372件** ✅ / lint ✅ / build ✅ / **test:e2e 全7フロー PASS（+ factnote-lock）** ✅
-- 分析の安全フィルタ誤ブロック修正完了時点: typecheck ✅ / test **377件** ✅ / lint ✅ / build ✅ / test:e2e 全7フロー PASS ✅
+- 分析の安全フィルタ誤ブロック修正（BLOCK_NONEへ再緩和＋診断ログ強化）完了時点: typecheck ✅ / test **377件** ✅ / lint ✅ / build ✅ / test:e2e 全7フロー PASS ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 
 - **症状**: 記録詳細の分析タブが常に「分析に失敗しました。しばらくしてから再試行してください。」になる（再試行も同じ結果）。Gemini呼び出し自体は例外を投げていない（例外なら理由が括弧書きで表示されるはずだが、それが出ない）ことから切り分けた。
 - **原因**: `analyzeIncident`（および diary / flat-check / memo-draft / profile-summary / transcribe）が Gemini の `safetySettings` を明示していなかったため、既定（やや厳しめ）の閾値が適用されていた。このアプリの用途は「自分自身の言い合い・衝突を客観的に記録・分析する」ことで、内容には強い言葉や子どもが関係する場面の描写が含まれうる。既定閾値だとこうした自己内省目的の記述が誤って安全フィルタに引っかかり、`candidates[0].finishReason === 'SAFETY'`（またはプロンプト自体がブロックされ `promptFeedback.blockReason` が付く）で本文が空になる。空文字は当然JSONとして解釈できないため、`IncidentAnalysisError(kind:'parse')` → 汎用エラーメッセージになっていた（再試行しても同じ内容を送るので何度やっても失敗する）。
-- **修正**:
-  - `src/lib/gemini.ts` に `REFLECTIVE_SAFETY_SETTINGS`（HARASSMENT / HATE_SPEECH / DANGEROUS_CONTENT を `BLOCK_ONLY_HIGH` に緩和。実際の加害コンテンツ生成ではなく自分の体験の記録・分析用途であること、危険の兆候自体はモデルに `safetyFlags` として検出・提示させる設計であることを理由に、実害カテゴリに限定して緩和）を追加し、事実ノートの全Gemini呼び出し（analyze / diary / flat-check / memo-draft / profile-summary / transcribe）に適用。
-  - `analyzeIncident.ts`: `finishReason`（SAFETY/PROHIBITED_CONTENT/BLOCKLIST/RECITATION/SPII/OTHER）または `promptFeedback.blockReason` を検出したら `IncidentAnalysisError(kind:'blocked')` として区別。ブロックは再試行しても結果が変わらないため即座に打ち切り、理由（種別のみ・本文はログに出さない）をサーバーログに記録し、ユーザーには「内容が安全フィルタによりブロックされ…表現を少し和らげるか、固有名詞・詳細な描写を控えて再度お試しください」という、再試行を促さない具体的な文言を返す。
+- **修正（1回目）**:
+  - `src/lib/gemini.ts` に `REFLECTIVE_SAFETY_SETTINGS`（HARASSMENT / HATE_SPEECH / DANGEROUS_CONTENT を `BLOCK_ONLY_HIGH` に緩和）を追加し、事実ノートの全Gemini呼び出し（analyze / diary / flat-check / memo-draft / profile-summary / transcribe）に適用。
+  - `analyzeIncident.ts`: `finishReason`（SAFETY/PROHIBITED_CONTENT/BLOCKLIST/RECITATION/SPII/OTHER）または `promptFeedback.blockReason` を検出したら `IncidentAnalysisError(kind:'blocked')` として区別。再試行しても結果が変わらないため即座に打ち切り、理由（種別のみ・本文はログに出さない）をサーバーログに記録し、ユーザーには再試行を促さない具体的な文言を返す。
   - `analyzeIncident.test.ts` に `analyzeIncident()` 本体の単体テストを追加（blocked/truncated/parse/成功の4パターン + 再試行回数の検証）。
-- **既知の限界**: 安全設定を緩和してもなお実際に危険な内容（暴力・自傷など）は依然としてブロックされうる（`safetyFlags` 側の設計と両立）。緩和後も誤ブロックが起きる場合はサーバーログの `[factnote-analyze] blocked: <reason>` で理由を確認できる。
+- **修正（2回目 — 本番で BLOCK_ONLY_HIGH でもなお誤ブロックが再現したため）**:
+  - `REFLECTIVE_SAFETY_SETTINGS` の HARASSMENT / HATE_SPEECH / DANGEROUS_CONTENT を `BLOCK_NONE` まで緩和。このアプリは第三者への攻撃文の生成は行わず、むしろ危険性の兆候（暴力・自傷・子どもの安全等）自体をモデルに `safetyFlags` として検出・提示させてユーザー自身の安全につなげる設計のため、ブロックによって分析自体が止まる方が実害が大きいと判断（`BLOCK_NONE` は閾値でのブロックを止めるだけで `safetyRatings` 自体は返り続けるため診断には使える）。
+  - `analyzeIncident.ts` にブロック理由の診断ログ（`blockedDiagnostics`）を追加。`promptFeedback.safetyRatings` / `candidates[0].safetyRatings` から HIGH/MEDIUM 相当・`blocked:true` のカテゴリのみを `カテゴリ=確率` の形でログに出す（本文は一切含めない）。ブロックが起きた場合はサーバーログの `[factnote-analyze] blocked: <reason> (<category>=<probability>, ...)` でどのカテゴリが原因かを特定できる。
+- **既知の限界**: CSAM等のGoogle側で常時有効な非設定可能カテゴリはこの調整では変えられない（そもそも変えるべきでもない）。`BLOCK_NONE` でもなお誤ブロックが起きる場合は上記ログのカテゴリを見て個別に判断する。
 
 ## 次にやること（順番付き — Phase 3 / P1）
 
