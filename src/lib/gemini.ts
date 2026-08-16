@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from '@google/genai';
 
 /**
  * Gemini クライアントを生成する。
@@ -17,6 +17,21 @@ export function getGemini(apiKey: string): GoogleGenAI {
 // gemini-2.0-flash 系は 2026-06-01 付けで廃止されたため、既定値は
 // 無料枠が広い gemini-3.1-flash-lite にしている（環境変数で変更可）。
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
+
+/**
+ * 自分自身の出来事を客観視するための内省アプリ、という用途向けの安全設定。
+ * Geminiの既定の閾値は、言い合いの描写や相手への不満（特に子どもが関係する場面）を
+ * 実際の加害目的コンテンツと区別できず誤ってブロックすることがあり、分析結果が
+ * 空文字で返って「分析に失敗しました」になる原因になっていた。このアプリは
+ * ユーザー自身の体験の記録・分析用途に閉じており（第三者への攻撃文の生成は行わない）、
+ * 危険性の兆候自体はモデルに safetyFlags として検出・提示させる設計のため、
+ * 実害カテゴリの閾値を「高い確度の場合のみブロック」に緩める。
+ */
+export const REFLECTIVE_SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+];
 
 export function chatModel(): string {
   return process.env.GEMINI_MODEL || DEFAULT_MODEL;

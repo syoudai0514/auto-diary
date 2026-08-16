@@ -1,6 +1,6 @@
 import { Type, type GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
-import { extractText } from '../gemini';
+import { extractText, REFLECTIVE_SAFETY_SETTINGS } from '../gemini';
 import { safeParseJson } from './jsonExtract';
 import {
   buildFactnoteDiarySystemPrompt,
@@ -105,6 +105,7 @@ export async function generateFactnoteDiary(
         responseMimeType: 'application/json',
         responseSchema: DIARY_RESPONSE_SCHEMA,
         maxOutputTokens: FACTNOTE_DIARY_MAX_OUTPUT_TOKENS,
+        safetySettings: REFLECTIVE_SAFETY_SETTINGS,
       },
     });
 

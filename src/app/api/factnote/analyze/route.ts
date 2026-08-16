@@ -108,18 +108,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ result });
   } catch (err: unknown) {
     if (err instanceof IncidentAnalysisError) {
-      // 内容はログに出さない（種別のみ）
-      console.error(`[factnote-analyze] ${err.kind} error`);
-      return NextResponse.json(
-        {
-          error: err.kind === 'truncated' ? 'analysis_truncated' : 'analysis_failed',
-          message:
-            err.kind === 'truncated'
-              ? err.message
-              : '分析に失敗しました。しばらくしてから再試行してください。',
-        },
-        { status: 502 },
-      );
+      // 内容はログに出さない（種別のみ。'blocked' は analyzeIncident 内で理由を別途ログ済み）
+      if (err.kind !== 'blocked') console.error(`[factnote-analyze] ${err.kind} error`);
+      const code =
+        err.kind === 'truncated'
+          ? 'analysis_truncated'
+          : err.kind === 'blocked'
+            ? 'analysis_blocked'
+            : 'analysis_failed';
+      const message =
+        err.kind === 'truncated' || err.kind === 'blocked'
+          ? err.message
+          : '分析に失敗しました。しばらくしてから再試行してください。';
+      return NextResponse.json({ error: code, message }, { status: 502 });
     }
     return aiErrorResponse(
       { tag: 'factnote-analyze', code: 'analysis_failed', messageBase: '分析に失敗しました' },

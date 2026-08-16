@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, extractText, getGemini } from '@/lib/gemini';
+import { chatModel, extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { z } from 'zod';
 import { Type } from '@google/genai';
@@ -82,6 +82,7 @@ export async function POST(req: Request) {
           responseMimeType: 'application/json',
           responseSchema: DRAFT_RESPONSE_SCHEMA,
           maxOutputTokens: 1024,
+          safetySettings: REFLECTIVE_SAFETY_SETTINGS,
         },
       });
       const draft = safeParseJson(DraftSchema, extractText(response));

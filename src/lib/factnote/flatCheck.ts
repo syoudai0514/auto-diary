@@ -1,6 +1,6 @@
 import { Type, type GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
-import { extractText } from '../gemini';
+import { extractText, REFLECTIVE_SAFETY_SETTINGS } from '../gemini';
 import { safeParseJson } from './jsonExtract';
 import {
   buildFlatCheckSystemPrompt,
@@ -122,6 +122,7 @@ export async function runFlatCheck(
         responseMimeType: 'application/json',
         responseSchema: FLAT_CHECK_RESPONSE_SCHEMA,
         maxOutputTokens: FLAT_CHECK_MAX_OUTPUT_TOKENS,
+        safetySettings: REFLECTIVE_SAFETY_SETTINGS,
       },
     });
     const payload = safeParseJson(FlatCheckPayloadSchema, extractText(response));

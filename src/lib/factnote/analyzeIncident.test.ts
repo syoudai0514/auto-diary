@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
+import type { GoogleGenAI } from '@google/genai';
 import {
+  analyzeIncident,
+  IncidentAnalysisError,
   IncidentAnalysisPayloadSchema,
   toIncidentAnalysisResult,
   type IncidentAnalysisPayload,
@@ -75,6 +78,71 @@ describe('分析ペイロードの検証と組み立て', () => {
       ...result.analysis.responsibilityBreakdown,
     ].map((x) => x.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+function mockGemini(
+  responses: Array<{ text?: string; finishReason?: string; blockReason?: string }>,
+): GoogleGenAI {
+  let i = 0;
+  const generateContent = vi.fn(async (_req: unknown) => {
+    const r = responses[Math.min(i, responses.length - 1)];
+    i++;
+    return {
+      text: r.text ?? '',
+      candidates: r.finishReason ? [{ finishReason: r.finishReason }] : [],
+      promptFeedback: r.blockReason ? { blockReason: r.blockReason } : undefined,
+    };
+  });
+  return { models: { generateContent } } as unknown as GoogleGenAI;
+}
+
+const validPayload = JSON.stringify(makePayload());
+
+describe('analyzeIncident', () => {
+  it('安全フィルタでブロックされた場合、再試行せず blocked エラーを投げる', async () => {
+    const ai = mockGemini([{ text: '', finishReason: 'SAFETY' }, { text: validPayload }]);
+    await expect(
+      analyzeIncident(ai, {
+        sourceText: 'text',
+        context: {},
+        model: 'm',
+        maxRetries: 1,
+      }),
+    ).rejects.toMatchObject({ kind: 'blocked' } satisfies Partial<IncidentAnalysisError>);
+    expect(
+      (ai.models.generateContent as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(1);
+  });
+
+  it('promptFeedback.blockReason がある場合も blocked エラーになる', async () => {
+    const ai = mockGemini([{ text: '', blockReason: 'SAFETY' }]);
+    await expect(
+      analyzeIncident(ai, { sourceText: 'text', context: {}, model: 'm' }),
+    ).rejects.toMatchObject({ kind: 'blocked' });
+  });
+
+  it('MAX_TOKENSで途切れた場合は truncated エラーになる', async () => {
+    const ai = mockGemini([{ text: '{"a":1', finishReason: 'MAX_TOKENS' }]);
+    await expect(
+      analyzeIncident(ai, { sourceText: 'text', context: {}, model: 'm' }),
+    ).rejects.toMatchObject({ kind: 'truncated' });
+  });
+
+  it('原因不明の解釈失敗は parse エラーになり、再試行する', async () => {
+    const ai = mockGemini([{ text: '壊れたJSON' }, { text: '壊れたJSON' }]);
+    await expect(
+      analyzeIncident(ai, { sourceText: 'text', context: {}, model: 'm', maxRetries: 1 }),
+    ).rejects.toMatchObject({ kind: 'parse' });
+    expect(
+      (ai.models.generateContent as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(2);
+  });
+
+  it('有効なペイロードを返せば成功する', async () => {
+    const ai = mockGemini([{ text: validPayload }]);
+    const payload = await analyzeIncident(ai, { sourceText: 'text', context: {}, model: 'm' });
+    expect(payload.title).toBe('荷物の受け取りを忘れた');
   });
 });
 

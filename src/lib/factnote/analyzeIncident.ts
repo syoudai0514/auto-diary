@@ -1,6 +1,6 @@
 import { Type, type GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
-import { extractText } from '../gemini';
+import { extractText, REFLECTIVE_SAFETY_SETTINGS } from '../gemini';
 import { safeParseJson } from './jsonExtract';
 import {
   buildIncidentAnalysisSystemPrompt,
@@ -196,21 +196,45 @@ export const INCIDENT_RESPONSE_SCHEMA = {
 export const INCIDENT_ANALYSIS_MAX_OUTPUT_TOKENS = 16384;
 
 export class IncidentAnalysisError extends Error {
-  /** 'truncated' = 出力上限で途切れた / 'parse' = JSONとして解釈できなかった */
-  readonly kind: 'truncated' | 'parse';
-  constructor(message: string, kind: 'truncated' | 'parse') {
+  /**
+   * 'truncated' = 出力上限で途切れた / 'blocked' = 安全フィルタ等でブロックされた
+   * （再試行しても変わらない） / 'parse' = 原因不明でJSONとして解釈できなかった
+   */
+  readonly kind: 'truncated' | 'blocked' | 'parse';
+  constructor(message: string, kind: 'truncated' | 'blocked' | 'parse') {
     super(message);
     this.name = 'IncidentAnalysisError';
     this.kind = kind;
   }
 }
 
+/** 再試行しても変わらないブロック系の finishReason / blockReason。 */
+const BLOCKED_REASONS = new Set([
+  'SAFETY',
+  'PROHIBITED_CONTENT',
+  'BLOCKLIST',
+  'RECITATION',
+  'SPII',
+  'OTHER',
+]);
+
 interface CandidateInfo {
   finishReason?: string;
 }
 
-function finishReasonOf(response: { candidates?: CandidateInfo[] }): string {
+interface FeedbackInfo {
+  candidates?: CandidateInfo[];
+  promptFeedback?: { blockReason?: string };
+}
+
+function finishReasonOf(response: FeedbackInfo): string {
   return response.candidates?.[0]?.finishReason ?? '';
+}
+
+/** ブロックされた（内容が原因で、再試行しても解決しない）応答かどうか。 */
+function isBlockedResponse(response: FeedbackInfo): boolean {
+  if (response.promptFeedback?.blockReason) return true;
+  return BLOCKED_REASONS.has(finishReasonOf(response));
 }
 
 export interface AnalyzeIncidentOptions {
@@ -233,6 +257,8 @@ export async function analyzeIncident(
   const user = buildIncidentAnalysisUserPrompt(sourceText, context);
 
   let truncated = false;
+  let blocked = false;
+  let lastReason = '';
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const contents = [
       { role: 'user' as const, parts: [{ text: user }] },
@@ -260,18 +286,30 @@ export async function analyzeIncident(
         responseMimeType: 'application/json',
         responseSchema: INCIDENT_RESPONSE_SCHEMA,
         maxOutputTokens: INCIDENT_ANALYSIS_MAX_OUTPUT_TOKENS,
+        safetySettings: REFLECTIVE_SAFETY_SETTINGS,
       },
     });
 
     const payload = safeParseJson(IncidentAnalysisPayloadSchema, extractText(response));
     if (payload) return payload;
     truncated = finishReasonOf(response) === 'MAX_TOKENS';
+    blocked = isBlockedResponse(response);
+    lastReason = response.promptFeedback?.blockReason || finishReasonOf(response) || '';
+    // ブロックは再試行しても結果が変わらないため、ここで打ち切る（内容はログに出さない）
+    if (blocked) break;
   }
 
   if (truncated) {
     throw new IncidentAnalysisError(
       '分析結果が長すぎて途中で切れました。記録を短く分けてお試しください。',
       'truncated',
+    );
+  }
+  if (blocked) {
+    console.error(`[factnote-analyze] blocked: ${lastReason || 'unknown'}`);
+    throw new IncidentAnalysisError(
+      '内容が安全フィルタによりブロックされ、分析結果を生成できませんでした。表現を少し和らげるか、固有名詞・詳細な描写を控えて再度お試しください。',
+      'blocked',
     );
   }
   throw new IncidentAnalysisError('モデル出力を JSON として解釈できませんでした', 'parse');

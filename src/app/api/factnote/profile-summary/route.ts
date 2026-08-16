@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, extractText, getGemini } from '@/lib/gemini';
+import { chatModel, extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import {
   buildObjectiveProfileSystemPrompt,
@@ -72,6 +72,7 @@ export async function POST(req: Request) {
         systemInstruction: buildObjectiveProfileSystemPrompt(),
         temperature: 0.4,
         maxOutputTokens: 1024,
+        safetySettings: REFLECTIVE_SAFETY_SETTINGS,
       },
     });
     const summary = extractText(response).trim();

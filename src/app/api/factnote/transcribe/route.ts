@@ -7,6 +7,7 @@ import {
   getGemini,
   guessAudioMimeType,
   maxAudioBytes,
+  REFLECTIVE_SAFETY_SETTINGS,
   TRANSCRIBE_MAX_OUTPUT_TOKENS,
   transcribeModel,
 } from '@/lib/gemini';
@@ -98,6 +99,7 @@ export async function POST(req: Request) {
       config: {
         temperature: 0,
         maxOutputTokens: TRANSCRIBE_MAX_OUTPUT_TOKENS,
+        safetySettings: REFLECTIVE_SAFETY_SETTINGS,
       },
     });
 
