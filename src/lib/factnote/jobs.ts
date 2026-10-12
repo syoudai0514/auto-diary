@@ -11,9 +11,9 @@ import {
   type FactnoteAnalyzeResult,
 } from './api';
 import { getCachedTranscript, getRecord, listRecords, saveRecord, setCachedTranscript } from './db';
-import { applyAnalysisResult, sourceTextOf } from './newRecord';
+import { applyAnalysisResult, describeSourceType, recordToContext, sourceTextOf } from './newRecord';
 import type { IncidentContext } from './prompts/incidentAnalysis';
-import type { IncidentRecord } from './types';
+import type { IncidentRecord, VerdictLeaning } from './types';
 
 /**
  * バックグラウンドジョブランナー（文字起こし・分析）。
@@ -210,45 +210,231 @@ export interface AnalyzeJobOptions {
 export function startAnalyzeJob(opts: AnalyzeJobOptions): FactnoteJob {
   const existing = jobs.get(opts.recordId);
   if (existing) return existing;
+  const job = registerAnalyzeJob(opts.recordId);
+  void runAnalyze(job, opts).catch(() => undefined);
+  return job;
+}
 
+function registerAnalyzeJob(recordId: string): FactnoteJob {
   const job: FactnoteJob = {
-    recordId: opts.recordId,
+    recordId,
     kind: 'analyze',
     preparing: false,
     progress: { current: 0, total: 0 },
   };
-  jobs.set(opts.recordId, job);
-  cancelledIds.delete(opts.recordId);
+  jobs.set(recordId, job);
+  cancelledIds.delete(recordId);
+  return job;
+}
+
+/**
+ * 分析を1件実行する。成功したら反映済みレコードを返し、失敗は例外で返す
+ * （単発の分析では購読者へ error イベントで伝え、一括再分析では呼び出し側が集計する）。
+ */
+async function runAnalyze(
+  job: FactnoteJob,
+  opts: AnalyzeJobOptions & { maxRetries429?: number },
+): Promise<IncidentRecord | undefined> {
+  try {
+    const current = await getRecord(opts.recordId);
+    const sourceText = current ? sourceTextOf(current) : '';
+    if (!current || !sourceText) {
+      await persistRecord(opts.recordId, (r) => ({ ...r, status: 'draft' }));
+      throw new ApiError(400, 'empty_source', '分析する内容がありません。');
+    }
+    const context = { ...opts.context, sourceType: opts.context.sourceType ?? describeSourceType(current) };
+    const result = await withRetryOn429(
+      () => factnoteAnalyzeApi(sourceText, context, opts.peopleContext),
+      opts.maxRetries429,
+    );
+    if (cancelledIds.has(opts.recordId)) {
+      // キャンセル済みなら結果を反映しない（原本と文字起こしは保持。分析済みなら元の状態に戻す）
+      await persistRecord(opts.recordId, (r) => ({ ...r, status: r.analysis ? 'ready' : 'draft' }));
+      return undefined;
+    }
+    const record = await persistRecord(opts.recordId, (r) => applyAnalysisResult(r, result));
+    if (record) emit({ type: 'done', job, record, result });
+    return record;
+  } catch (err) {
+    // 既存の分析がある記録は ready に戻す（再分析の失敗で分析済みの状態を失わない）
+    await persistRecord(opts.recordId, (r) => ({ ...r, status: r.analysis ? 'ready' : 'draft' }));
+    emit({ type: 'error', job, message: errorMessage(err, '分析に失敗しました。') });
+    throw err;
+  } finally {
+    jobs.delete(opts.recordId);
+    cancelledIds.delete(opts.recordId);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 一括再分析（全体の見解画面から実行）
+
+export interface BulkChange {
+  recordId: string;
+  title: string;
+  before?: VerdictLeaning;
+  after?: VerdictLeaning;
+}
+
+export interface BulkReanalysisState {
+  status: 'running' | 'done' | 'cancelled' | 'aborted';
+  total: number;
+  done: number;
+  failed: number;
+  currentTitle?: string;
+  /** 判定が付いた/変わった記録（新しい判定の記録全件。before が無いのは旧基準・未分析）。 */
+  changes: BulkChange[];
+  /** 中断した理由（aborted のとき）。 */
+  message?: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+type BulkListener = (state: BulkReanalysisState | null) => void;
+
+let bulkState: BulkReanalysisState | null = null;
+let bulkCancel = false;
+const bulkListeners = new Set<BulkListener>();
+
+function emitBulk(): void {
+  const snapshot = bulkState ? { ...bulkState, changes: [...bulkState.changes] } : null;
+  for (const l of bulkListeners) {
+    try {
+      l(snapshot);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function subscribeBulkReanalysis(listener: BulkListener): () => void {
+  bulkListeners.add(listener);
+  listener(bulkState ? { ...bulkState, changes: [...bulkState.changes] } : null);
+  return () => bulkListeners.delete(listener);
+}
+
+export function getBulkReanalysis(): BulkReanalysisState | null {
+  return bulkState;
+}
+
+/** 完了・中断後の結果表示を閉じる。 */
+export function clearBulkReanalysis(): void {
+  if (bulkState?.status === 'running') return;
+  bulkState = null;
+  emitBulk();
+}
+
+/** 次の記録へ進む前に止める（実行中の1件は完了まで待つ）。 */
+export function cancelBulkReanalysis(): void {
+  if (bulkState?.status === 'running') bulkCancel = true;
+}
+
+/** 再試行しても直らない、全件に共通する失敗（APIキー未設定・ログイン切れ等）。 */
+function isFatalForBulk(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  return err.status === 401 || err.status === 403 || err.code === 'no_api_key' || err.status === 0;
+}
+
+/** 画面の自動ロックを抑止する（対応ブラウザのみ。iOS Safari 16.4+）。 */
+async function requestWakeLock(): Promise<{ release: () => Promise<void> } | null> {
+  try {
+    const nav = navigator as Navigator & {
+      wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
+    };
+    return nav.wakeLock ? await nav.wakeLock.request('screen') : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 指定した記録を古い順に1件ずつ再分析する（直列。依頼書 §2-2）。
+ * 1件ごとに結果を保存するので、途中で止めても完了分は残る。
+ */
+export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?: string }): void {
+  if (bulkState?.status === 'running' || opts.recordIds.length === 0) return;
+  bulkCancel = false;
+  bulkState = {
+    status: 'running',
+    total: opts.recordIds.length,
+    done: 0,
+    failed: 0,
+    changes: [],
+    startedAt: new Date().toISOString(),
+  };
+  emitBulk();
 
   void (async () => {
+    const wakeLock = await requestWakeLock();
+    let consecutiveFailures = 0;
     try {
-      const current = await getRecord(opts.recordId);
-      const sourceText = current ? sourceTextOf(current) : '';
-      if (!sourceText) {
-        await persistRecord(opts.recordId, (r) => ({ ...r, status: 'draft' }));
-        emit({ type: 'error', job, message: '分析する内容がありません。' });
-        return;
+      for (const recordId of opts.recordIds) {
+        if (bulkCancel) {
+          bulkState = { ...bulkState!, status: 'cancelled' };
+          return;
+        }
+        const record = await getRecord(recordId);
+        if (!record || jobs.has(recordId)) {
+          bulkState = { ...bulkState!, done: bulkState!.done + 1 };
+          emitBulk();
+          continue;
+        }
+        bulkState = { ...bulkState!, currentTitle: record.title || '無題の記録' };
+        emitBulk();
+
+        const before = record.analysis?.verdict?.leaning;
+        const marked = await persistRecord(recordId, (r) => ({ ...r, status: 'analyzing' }));
+        if (!marked) {
+          bulkState = { ...bulkState!, done: bulkState!.done + 1 };
+          emitBulk();
+          continue;
+        }
+        const job = registerAnalyzeJob(recordId);
+        emit({ type: 'progress', job });
+        try {
+          const updated = await runAnalyze(job, {
+            recordId,
+            context: recordToContext(record),
+            peopleContext: opts.peopleContext,
+            // 一括実行ではレート制限に当たりやすいので、待って再試行する回数を増やす
+            maxRetries429: 6,
+          });
+          consecutiveFailures = 0;
+          const after = updated?.analysis?.verdict?.leaning;
+          bulkState = {
+            ...bulkState!,
+            done: bulkState!.done + 1,
+            changes: updated
+              ? [
+                  ...bulkState!.changes,
+                  { recordId, title: updated.title || '無題の記録', before, after },
+                ]
+              : bulkState!.changes,
+          };
+        } catch (err) {
+          consecutiveFailures++;
+          bulkState = { ...bulkState!, done: bulkState!.done + 1, failed: bulkState!.failed + 1 };
+          if (isFatalForBulk(err) || consecutiveFailures >= 3) {
+            bulkState = {
+              ...bulkState,
+              status: 'aborted',
+              message:
+                err instanceof ApiError && consecutiveFailures < 3
+                  ? err.message
+                  : '続けて失敗したため中断しました。時間をおいて「再分析」を押すと、残りの記録から再開できます。',
+            };
+            return;
+          }
+        }
+        emitBulk();
       }
-      const result = await withRetryOn429(() =>
-        factnoteAnalyzeApi(sourceText, opts.context, opts.peopleContext),
-      );
-      if (cancelledIds.has(opts.recordId)) {
-        // キャンセル済みなら結果を反映しない（原本と文字起こしは保持）
-        await persistRecord(opts.recordId, (r) => ({ ...r, status: 'draft' }));
-        return;
-      }
-      const record = await persistRecord(opts.recordId, (r) => applyAnalysisResult(r, result));
-      if (record) emit({ type: 'done', job, record, result });
-    } catch (err) {
-      await persistRecord(opts.recordId, (r) => ({ ...r, status: 'draft' }));
-      emit({ type: 'error', job, message: errorMessage(err, '分析に失敗しました。') });
+      bulkState = { ...bulkState!, status: 'done' };
     } finally {
-      jobs.delete(opts.recordId);
-      cancelledIds.delete(opts.recordId);
+      bulkState = { ...bulkState!, currentTitle: undefined, finishedAt: new Date().toISOString() };
+      emitBulk();
+      await wakeLock?.release().catch(() => undefined);
     }
   })();
-
-  return job;
 }
 
 /**

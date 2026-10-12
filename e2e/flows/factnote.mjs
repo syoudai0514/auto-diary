@@ -4,6 +4,14 @@
  * → 日記生成（モック）→ 編集・保存 → 詳細タブ → JSONエクスポート → 削除 → 一覧が空。
  */
 const sampleAnalysis = {
+  verdict: {
+    leaning: 'user_more',
+    headline: '今回は、受け取りを忘れたあなたの側の問題が主です。',
+    reasoning: '発端の受け取り忘れ（中程度）が、苛立ちからの一般化（軽微）より重い。',
+    robustness: 'tentative',
+    whatWouldChange: '忘れ事が繰り返されていたなら相手の不満はより正当になる。',
+    roleReversalCheck: '立場を入れ替えても判定は変わらない。',
+  },
   conciseView:
     '荷物の受け取りを忘れた点は、あなたのミスです。ただし「いつも」という一般化は今回の事実からは確認できません。',
   verifiedFacts: [{ id: 'vf1', text: '受け取りを忘れ、その場で謝罪した', confidence: 'high', evidenceIds: [] }],
@@ -11,25 +19,47 @@ const sampleAnalysis = {
   aiInferences: [{ id: 'ai1', text: '不満が今回の一件に重なった可能性', confidence: 'low', evidenceIds: [] }],
   unknowns: [{ id: 'uk1', text: '過去の忘れ事の実際の回数', confidence: 'low', evidenceIds: [] }],
   userImprovementPoints: [
-    { id: 'ui1', text: '受け取りを了承した時点でリマインダーを設定する', confidence: 'high', evidenceIds: [] },
+    {
+      id: 'ui1',
+      text: '受け取りを了承した時点でリマインダーを設定しなかった',
+      confidence: 'high',
+      evidenceIds: [],
+      severity: 'moderate',
+      basis: 'user_claim',
+    },
   ],
   otherPartyProblemPoints: [
-    { id: 'op1', text: '一件のミスを「いつも」と一般化した', confidence: 'high', evidenceIds: [] },
+    {
+      id: 'op1',
+      text: '一件のミスを「いつも」と一般化した',
+      confidence: 'high',
+      evidenceIds: [],
+      severity: 'minor',
+      basis: 'user_claim',
+    },
   ],
   balancedConclusion: 'ミスの訂正と表現の適切さは別の論点として扱うのが妥当です。',
   nextActions: ['依頼を受けた瞬間にリマインダーを登録する'],
   replySuggestions: {
     gentle: '荷物の件、忘れてしまってごめん。',
     standard: '次からはリマインダーを設定します。',
-    firm: '「いつも」とまとめられるのは受け入れられません。',
+    firm: '',
   },
   responsibilityBreakdown: [
-    { id: 'rb1', topic: '荷物の受け取りを忘れた', userSide: '改善が必要', judgment: 'user_improvement' },
+    {
+      id: 'rb1',
+      topic: '荷物の受け取りを忘れた',
+      userSide: '改善が必要',
+      judgment: 'user_improvement',
+      severity: 'moderate',
+      basis: 'user_claim',
+    },
   ],
   detectedPatterns: [
     {
       id: 'dp1',
       type: 'generalization',
+      actor: 'other',
       label: '一般化表現',
       description: '「いつも」という一般化表現が使われた',
       evidenceIds: [],
@@ -40,7 +70,7 @@ const sampleAnalysis = {
   repairActions: [],
   safetyFlags: [],
   aiModel: 'e2e-mock',
-  promptVersion: 'v1',
+  promptVersion: 'v3',
   generatedAt: '2026-07-13T00:00:00.000Z',
 };
 
@@ -108,6 +138,9 @@ export async function run({ base, invite, newPage, imageFile }) {
   await page.click('button:has-text("AIで分析する")');
   await page.waitForSelector('text=次回の具体的対応', { timeout: 15000 });
   for (const text of [
+    '今回の判定',
+    '自分側がやや重い',
+    '受け取りを忘れたあなたの側の問題が主です',
     'あなたのミスです',
     '確認できる事実',
     'ユーザー本人の認識',
@@ -115,22 +148,33 @@ export async function run({ base, invite, newPage, imageFile }) {
     '不明・確認できない点',
     '自分側の改善点',
     '相手側の問題点',
-    '論点別の責任整理',
-    'バランスの取れた結論',
+    '中程度',
+    '軽微',
+    '論点ごとの整理',
+    '論点ごとの結論',
     '相手へ伝える短文',
     'やわらかい',
-    '境界線を明確にする',
     '一般化表現',
   ]) {
     if ((await page.locator(`text=${text}`).count()) === 0) {
       throw new Error(`FAIL: analysis result missing: ${text}`);
     }
   }
-  console.log('  OK: all analysis sections rendered');
+  // 境界線の返信案は、相手に境界線を示すべき言動がない場面では出さない
+  if ((await page.locator('span:text-is("境界線を明確にする")').count()) !== 0) {
+    throw new Error('FAIL: firm reply should be hidden when empty');
+  }
+  if ((await page.locator('text=境界線を示す必要がある言動が見当たらない').count()) === 0) {
+    throw new Error('FAIL: missing explanation for omitted boundary reply');
+  }
+  console.log('  OK: all analysis sections rendered (verdict card, severities, no forced boundary reply)');
 
   if (!analyzeBody) throw new Error('FAIL: /api/factnote/analyze was never called');
   if (!analyzeBody.sourceText.includes('荷物の受け取りを忘れた')) {
     throw new Error('FAIL: sourceText not sent correctly');
+  }
+  if (!analyzeBody.context?.sourceType?.includes('記録者が書いた文章')) {
+    throw new Error(`FAIL: sourceType not sent: ${JSON.stringify(analyzeBody.context)}`);
   }
   if (analyzeBody.context?.location !== '自宅' || analyzeBody.context?.childrenPresent !== 'いなかった') {
     throw new Error(`FAIL: context not sent correctly: ${JSON.stringify(analyzeBody.context)}`);

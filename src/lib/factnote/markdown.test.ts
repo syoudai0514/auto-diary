@@ -41,7 +41,13 @@ describe('Markdown 書き出し', () => {
     expect(md).toContain('## 分析');
     expect(md).toContain('確認できる事実');
     expect(md).toContain('論点別の責任整理');
+    expect(md).toContain('**今回の判定**: 自分側がやや重い');
+    expect(md).toContain('重さ: 中程度');
+    expect(md).toContain('論点ごとの結論');
     expect(md).toContain('相手へ伝える短文');
+    // 空の返信案（境界線）は書き出さない
+    expect(md).not.toContain('境界線を明確にする: \n');
+    expect(md).not.toMatch(/境界線を明確にする: $/m);
     expect(md).toContain('## 日記');
     expect(md).toContain('事実記録');
   });

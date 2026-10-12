@@ -51,6 +51,8 @@ export interface IncidentRecord {
   evidenceItems: EvidenceItem[];
 
   analysis?: IncidentAnalysis;
+  /** 再分析で置き換えられた直前の分析（判定の変化を比較するため1世代だけ保持）。 */
+  previousAnalysis?: IncidentAnalysis;
   diaryVersions: DiaryVersion[];
 
   status: RecordStatus;
@@ -71,7 +73,13 @@ export interface IncidentRecord {
 }
 
 export interface IncidentAnalysis {
-  /** 最初に表示する 2〜4文の率直かつ中立的な見解（依頼書 §12.1）。 */
+  /**
+   * 今回の判定（v3〜）。論点の「重さ」から導いた、どちら側の問題が重いかの率直な判定。
+   * 旧基準（v1/v2）の分析には存在しない。
+   */
+  verdict?: IncidentVerdict;
+
+  /** 最初に表示する 2〜4文の率直な見解（依頼書 §12.1）。v3〜は verdict から導く。 */
   conciseView: string;
 
   verifiedFacts: AnalysisItem[];
@@ -113,6 +121,49 @@ export interface AnalysisItem {
   text: string;
   confidence: ConfidenceLevel;
   evidenceIds: string[];
+  /** 問題の重さ（改善点・問題点のみ。v3〜）。 */
+  severity?: Severity;
+  /** 根拠の種類（改善点・問題点のみ。v3〜）。 */
+  basis?: EvidenceBasis;
+}
+
+/** 問題の重さ。自分側・相手側に同じ物差しで付ける。 */
+export type Severity = 'minor' | 'moderate' | 'serious';
+
+/** 根拠の種類: 記録で確認できる / 記録者の記憶・主張 / AIの推測。 */
+export type EvidenceBasis = 'verified' | 'user_claim' | 'inference';
+
+/** 発言・行動の主体。 */
+export type IssueActor = 'user' | 'other' | 'both' | 'unclear';
+
+/**
+ * 一件の出来事の判定。「誰が何％悪い」という数値は出さず（依頼書 §13）、
+ * 問題の重さから見た傾きをカテゴリで示す。
+ */
+export type VerdictLeaning =
+  | 'user_mainly'
+  | 'user_more'
+  | 'comparable'
+  | 'other_more'
+  | 'other_mainly'
+  | 'no_fault'
+  | 'not_applicable'
+  | 'undeterminable';
+
+/** 判定の確かさ（未確認の主張にどれだけ依存しているか）。 */
+export type VerdictRobustness = 'firm' | 'tentative' | 'fragile';
+
+export interface IncidentVerdict {
+  leaning: VerdictLeaning;
+  /** 1文の率直な判定。 */
+  headline: string;
+  /** 件数ではなく重さに基づく理由。 */
+  reasoning: string;
+  robustness: VerdictRobustness;
+  /** どんな事実が分かれば判定が変わりうるか。 */
+  whatWouldChange: string;
+  /** 立場を入れ替えても同じ判定になるかの確認結果。 */
+  roleReversalCheck: string;
 }
 
 export type ResponsibilityJudgment =
@@ -129,6 +180,10 @@ export interface ResponsibilityItem {
   userSide?: string;
   otherSide?: string;
   judgment: ResponsibilityJudgment;
+  /** この論点の問題の重さ（v3〜。問題なし・判断材料不足の論点では省略）。 */
+  severity?: Severity;
+  /** この論点の根拠の種類（v3〜）。 */
+  basis?: EvidenceBasis;
 }
 
 export interface DetectedPattern {
@@ -139,6 +194,8 @@ export interface DetectedPattern {
   description: string;
   evidenceIds: string[];
   confidence: ConfidenceLevel;
+  /** そのパターンを示したのは誰か（v3〜。旧データは type から推定する）。 */
+  actor?: IssueActor;
 }
 
 export interface EvidenceItem {
@@ -227,6 +284,44 @@ export const RESPONSIBILITY_JUDGMENT_LABELS: Record<ResponsibilityJudgment, stri
   no_problem: '問題なし',
   insufficient_evidence: '判断材料不足',
   contextual_factor: '考慮事情あり',
+};
+
+/** 判定の表示名。 */
+export const VERDICT_LEANING_LABELS: Record<VerdictLeaning, string> = {
+  user_mainly: '主に自分側の問題',
+  user_more: '自分側がやや重い',
+  comparable: '双方同程度',
+  other_more: '相手側がやや重い',
+  other_mainly: '主に相手側の問題',
+  no_fault: 'どちらにも大きな問題なし',
+  not_applicable: '判定の対象外（衝突ではない）',
+  undeterminable: '判断材料が不足',
+};
+
+/** 判定の確かさの表示名。 */
+export const VERDICT_ROBUSTNESS_LABELS: Record<VerdictRobustness, string> = {
+  firm: '記録で裏付けあり',
+  tentative: '暫定（一部が本人の記憶）',
+  fragile: '揺らぎやすい（未確認の主張が中心）',
+};
+
+export const SEVERITY_LABELS: Record<Severity, string> = {
+  minor: '軽微',
+  moderate: '中程度',
+  serious: '重大',
+};
+
+export const EVIDENCE_BASIS_LABELS: Record<EvidenceBasis, string> = {
+  verified: '記録で確認',
+  user_claim: '本人の記憶',
+  inference: '推測',
+};
+
+export const ISSUE_ACTOR_LABELS: Record<IssueActor, string> = {
+  user: '自分',
+  other: '相手',
+  both: '双方',
+  unclear: '不明',
 };
 
 /** 確信度の表示名。 */
@@ -418,4 +513,68 @@ export const FUTURE_MEMO_TRIGGER_LABELS: Record<FutureMemoTriggerType, string> =
   many_user_issues: '自分側の問題が多い時',
   many_other_party_issues: '相手側の問題が多い時',
   manual: '手動で表示',
+};
+
+// ---------------------------------------------------------------------------
+// 全体の見解（全記録を通じたAI総評）
+
+export type RelationshipTrend = 'improving' | 'stable' | 'worsening' | 'fluctuating' | 'insufficient_data';
+
+export type ResponsibilityTendency =
+  | 'user_heavier'
+  | 'comparable'
+  | 'other_heavier'
+  | 'depends_on_topic'
+  | 'insufficient_data';
+
+/** 繰り返し見られる課題（refs は記録IDに変換済み）。 */
+export interface RecurringIssue {
+  text: string;
+  severity: Severity;
+  /** 該当した記録数（AIが要約から数えた値）。 */
+  count: number;
+  recordIds: string[];
+}
+
+export interface OverallReview {
+  overallView: string;
+  relationshipTrend: RelationshipTrend;
+  trendReason: string;
+  responsibilityTendency: ResponsibilityTendency;
+  responsibilityReason: string;
+  userRecurringIssues: RecurringIssue[];
+  otherRecurringIssues: RecurringIssue[];
+  strengths: string[];
+  conflictTriggers: string[];
+  childImpact: string;
+  safetyConcerns: string;
+  userFocus: string[];
+  requestsToOther: string[];
+  cannotJudge: string[];
+  closingMessage: string;
+
+  aiModel: string;
+  promptVersion: string;
+  generatedAt: string;
+  /** 生成時点の記録の指紋（記録が変わったら「更新できます」を出す）。 */
+  fingerprint: string;
+  /** 生成時に要約へ含めた記録数 / 旧基準の分析だった記録数。 */
+  includedCount: number;
+  outdatedCount: number;
+}
+
+export const RELATIONSHIP_TREND_LABELS: Record<RelationshipTrend, string> = {
+  improving: '改善の傾向',
+  stable: '横ばい',
+  worsening: '悪化の傾向',
+  fluctuating: '波がある',
+  insufficient_data: '判断材料が不足',
+};
+
+export const RESPONSIBILITY_TENDENCY_LABELS: Record<ResponsibilityTendency, string> = {
+  user_heavier: '自分側の課題が重い傾向',
+  comparable: '双方同程度',
+  other_heavier: '相手側の課題が重い傾向',
+  depends_on_topic: 'テーマによって異なる',
+  insufficient_data: '判断材料が不足',
 };

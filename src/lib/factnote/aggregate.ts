@@ -1,6 +1,8 @@
 import { sourceTextOf } from './newRecord';
 import type {
   AggregatedItem,
+  DetectedPattern,
+  IssueActor,
   FlatCheckScope,
   IncidentRecord,
   ObjectiveProfileSummary,
@@ -84,16 +86,39 @@ const CONFLICT_CONTEXT_CHECKS: Array<{ label: string; test: (r: IncidentRecord, 
   { label: '忘れ物・約束忘れ', test: (r, t) => t.includes('忘れ') },
 ];
 
-/** detectedPatterns.type の分類: 自分側の繰り返しパターン（追加依頼 §6）。 */
+/**
+ * 旧データ（actor を持たない v1/v2 の分析）用の推定表: 自分側の繰り返しパターン。
+ * v3 以降は detectedPatterns.actor を使う — 種類だけで側を決めると、記録者自身の
+ * 一般化表現まで「相手側」に数えてしまうため。
+ */
 const USER_PATTERN_TYPES = new Set(['forgotten_promise', 'verbal_only_management', 'user_over_apology']);
-/** 相手側の発言・行動パターン。 */
+/** 旧データ用の推定表: 相手側の発言・行動パターン。 */
 const OTHER_PATTERN_TYPES = new Set([
   'generalization',
   'personalization',
   'blame_without_evidence',
   'no_correction',
   'one_sided_apology',
+  'harsh_language',
+  'stonewalling',
 ]);
+
+/** パターンの主体（actor があればそれを、なければ種類から推定する）。 */
+export function patternActor(p: DetectedPattern): IssueActor {
+  if (p.actor) return p.actor;
+  if (USER_PATTERN_TYPES.has(p.type)) return 'user';
+  if (OTHER_PATTERN_TYPES.has(p.type)) return 'other';
+  return 'unclear';
+}
+
+const isUserPattern = (p: DetectedPattern) => {
+  const a = patternActor(p);
+  return a === 'user' || a === 'both';
+};
+const isOtherPattern = (p: DetectedPattern) => {
+  const a = patternActor(p);
+  return a === 'other' || a === 'both';
+};
 
 // ---------------------------------------------------------------------------
 // 期間・人物・対象記録のフィルタ
@@ -170,14 +195,14 @@ function textContainsAny(record: IncidentRecord, keywords: string[]): boolean {
 }
 
 /** analysis.detectedPatterns を type ごとに集計する。 */
-function aggregatePatterns(
+export function aggregatePatterns(
   records: IncidentRecord[],
-  filter: (type: string) => boolean,
+  filter: (p: DetectedPattern) => boolean,
 ): AggregatedItem[] {
   const map = new Map<string, { label: string; description: string; recordIds: string[] }>();
   for (const r of records) {
     for (const p of r.analysis?.detectedPatterns ?? []) {
-      if (!filter(p.type)) continue;
+      if (!filter(p)) continue;
       const entry = map.get(p.type) ?? { label: p.label, description: p.description, recordIds: [] };
       if (!entry.recordIds.includes(r.id)) entry.recordIds.push(r.id);
       map.set(p.type, entry);
@@ -309,8 +334,8 @@ export function buildProfileSummary(
     commonExpressions: countByKeywords(records, EXPRESSION_KEYWORDS),
     conflictPatterns,
 
-    userPatterns: aggregatePatterns(records, (t) => USER_PATTERN_TYPES.has(t)),
-    otherPartyPatterns: aggregatePatterns(records, (t) => OTHER_PATTERN_TYPES.has(t)),
+    userPatterns: aggregatePatterns(records, isUserPattern),
+    otherPartyPatterns: aggregatePatterns(records, isOtherPattern),
 
     positiveActions: aggregateAnalysisItems(records, (r) => r.analysis?.positiveActions ?? []),
     repairActions: aggregateAnalysisItems(records, (r) => r.analysis?.repairActions ?? []),
@@ -374,11 +399,11 @@ export function buildPastComparison(pastRecords: IncidentRecord[]): AggregatedIt
   for (const item of countByKeywords(pastRecords, EXPRESSION_KEYWORDS).slice(0, 3)) {
     push({ ...item, label: `${item.label}の表現`, id: `pc_${item.id}` });
   }
-  for (const item of aggregatePatterns(
-    pastRecords,
-    (t) => USER_PATTERN_TYPES.has(t) || OTHER_PATTERN_TYPES.has(t),
-  ).slice(0, 4)) {
-    push({ ...item, id: `pc_${item.id}` });
+  for (const item of aggregatePatterns(pastRecords, isUserPattern).slice(0, 2)) {
+    push({ ...item, label: `自分側: ${item.label}`, id: `pc_u_${item.id}` });
+  }
+  for (const item of aggregatePatterns(pastRecords, isOtherPattern).slice(0, 2)) {
+    push({ ...item, label: `相手側: ${item.label}`, id: `pc_o_${item.id}` });
   }
   const repairs = pastRecords.filter((r) => r.isRepairAction);
   push({

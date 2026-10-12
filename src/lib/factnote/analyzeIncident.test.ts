@@ -21,17 +21,44 @@ function makePayload(): IncidentAnalysisPayload {
     userClaims: [{ text: '主張1', confidence: 'medium' }],
     aiInferences: [{ text: '推測1', confidence: 'low' }],
     unknowns: [{ text: '不明1', confidence: 'low' }],
-    userImprovementPoints: [{ text: 'リマインダーを設定する', confidence: 'high' }],
-    otherPartyProblemPoints: [{ text: '一般化表現を使った', confidence: 'high' }],
+    userImprovementPoints: [
+      { text: 'リマインダーを設定しなかった', confidence: 'high', severity: 'moderate', basis: 'verified' },
+    ],
+    otherPartyProblemPoints: [
+      { text: '一般化表現を使った', confidence: 'high', severity: 'minor', basis: 'verified' },
+    ],
     balancedConclusion: '結論。',
     nextActions: ['対応1', '対応2', '対応3', '対応4'],
     replySuggestions: { gentle: 'g', standard: 's', firm: 'f' },
     responsibilityBreakdown: [
-      { topic: '受け取り忘れ', userSide: '改善が必要', otherSide: '', judgment: 'user_improvement' },
+      {
+        topic: '受け取り忘れ',
+        userSide: '改善が必要',
+        otherSide: '',
+        judgment: 'user_improvement',
+        severity: 'moderate',
+        basis: 'verified',
+      },
+      {
+        topic: '背景',
+        userSide: '',
+        otherSide: '',
+        judgment: 'no_problem',
+        severity: 'minor',
+        basis: 'inference',
+      },
     ],
     detectedPatterns: [
-      { type: 'generalization', label: '一般化表現', description: '説明', confidence: 'high' },
+      { type: 'generalization', actor: 'other', label: '一般化表現', description: '説明', confidence: 'high' },
     ],
+    verdict: {
+      reasoning: '発端の受け取り忘れ（中程度）が、反応の一般化（軽微）より重い。',
+      roleReversalCheck: '入れ替えても同じ判定。',
+      leaning: 'user_more',
+      robustness: 'firm',
+      whatWouldChange: '忘れ事が繰り返されていた場合。',
+      headline: '今回は自分側の問題が主です。',
+    },
     positiveActions: [],
     repairActions: [],
     safetyFlags: [],
@@ -67,6 +94,43 @@ describe('分析ペイロードの検証と組み立て', () => {
     expect(result.analysis.responsibilityBreakdown[0].userSide).toBe('改善が必要');
     expect(result.title).toBe('荷物の受け取りを忘れた');
     expect(result.isConflict).toBe(true);
+  });
+
+  it('判定・重さ・根拠の種類・パターンの主体を引き継ぐ', () => {
+    const { analysis } = toIncidentAnalysisResult(makePayload(), { aiModel: 'm' });
+    expect(analysis.verdict?.leaning).toBe('user_more');
+    expect(analysis.verdict?.robustness).toBe('firm');
+    expect(analysis.userImprovementPoints[0].severity).toBe('moderate');
+    expect(analysis.otherPartyProblemPoints[0].basis).toBe('verified');
+    expect(analysis.detectedPatterns[0].actor).toBe('other');
+    // 問題なしの論点には重さを付けない
+    expect(analysis.responsibilityBreakdown[0].severity).toBe('moderate');
+    expect(analysis.responsibilityBreakdown[1].severity).toBeUndefined();
+  });
+
+  it('境界線の返信案が空なら空のまま保存する（境界線を引く必要のない場面で作らない）', () => {
+    const payload = makePayload();
+    payload.replySuggestions.firm = '  ';
+    const { analysis } = toIncidentAnalysisResult(payload, { aiModel: 'm' });
+    expect(analysis.replySuggestions.firm).toBe('');
+  });
+
+  it('判定（leaning）が不正なら検証に失敗する（判定は既定値で埋めない）', () => {
+    const bad = makePayload() as unknown as { verdict: { leaning: string } };
+    bad.verdict.leaning = 'fifty_fifty';
+    expect(IncidentAnalysisPayloadSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('重さ・根拠の種類が想定外の値でも分析全体は捨てず、既定値に寄せる', () => {
+    const p = makePayload() as unknown as { userImprovementPoints: Array<{ severity: string; basis: string }> };
+    p.userImprovementPoints[0].severity = 'huge';
+    p.userImprovementPoints[0].basis = '???';
+    const parsed = IncidentAnalysisPayloadSchema.safeParse(p);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.userImprovementPoints[0].severity).toBe('moderate');
+      expect(parsed.data.userImprovementPoints[0].basis).toBe('user_claim');
+    }
   });
 
   it('IDは項目ごとに一意', () => {
@@ -170,10 +234,43 @@ describe('safeParseJson（フェンス・前置き耐性）', () => {
 describe('analysisSummaryForDiary', () => {
   it('分析の要点だけを日記プロンプト用テキストにする', () => {
     const summary = analysisSummaryForDiary(buildMockAnalysis());
+    expect(summary).toContain('判定: 自分側がやや重い');
+    expect(summary).toContain('（中程度）');
     expect(summary).toContain('見解:');
     expect(summary).toContain('確認できる事実:');
     expect(summary).toContain('次回の対応:');
     // JSON全体は含まない
     expect(summary).not.toContain('{');
+  });
+});
+
+describe('判定の生成順とプロンプト', () => {
+  it('responseSchema は判定・見解を各側の分析より後に生成させる', async () => {
+    const { INCIDENT_PROPERTY_ORDER, INCIDENT_RESPONSE_SCHEMA } = await import('./analyzeIncident');
+    const order = INCIDENT_PROPERTY_ORDER;
+    const idx = (k: string) => order.indexOf(k);
+    expect(idx('responsibilityBreakdown')).toBeLessThan(idx('verdict'));
+    expect(idx('userImprovementPoints')).toBeLessThan(idx('verdict'));
+    expect(idx('otherPartyProblemPoints')).toBeLessThan(idx('verdict'));
+    expect(idx('verdict')).toBeLessThan(idx('conciseView'));
+    expect(idx('verdict')).toBeLessThan(idx('balancedConclusion'));
+    expect(INCIDENT_RESPONSE_SCHEMA.propertyOrdering).toEqual(order);
+    // 全プロパティを網羅している
+    expect([...order].sort()).toEqual(Object.keys(INCIDENT_RESPONSE_SCHEMA.properties).sort());
+  });
+
+  it('システムプロンプトは「公正 ≠ 真ん中」と重さの物差し・立場の入れ替えを含む', async () => {
+    const { buildIncidentAnalysisSystemPrompt, buildIncidentAnalysisUserPrompt } = await import(
+      './prompts/incidentAnalysis'
+    );
+    const sys = buildIncidentAnalysisSystemPrompt();
+    expect(sys).toContain('「公正」は「真ん中」ではない');
+    expect(sys).toContain('件数ではなく重さ');
+    expect(sys).toContain('重さの物差し');
+    expect(sys).toContain('立場をそっくり入れ替えても');
+    expect(sys).toContain('原因（発端）と反応を分けて評価する');
+    const user = buildIncidentAnalysisUserPrompt('本文', { sourceType: '録音の文字起こし' });
+    expect(user).toContain('# 記録の形式');
+    expect(user).toContain('録音の文字起こし');
   });
 });

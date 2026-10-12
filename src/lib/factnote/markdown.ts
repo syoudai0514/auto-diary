@@ -3,7 +3,12 @@ import {
   CONFIDENCE_LABELS,
   DIARY_MODE_LABELS,
   RECORD_SOURCE_LABELS,
+  EVIDENCE_BASIS_LABELS,
+  ISSUE_ACTOR_LABELS,
   RESPONSIBILITY_JUDGMENT_LABELS,
+  SEVERITY_LABELS,
+  VERDICT_LEANING_LABELS,
+  VERDICT_ROBUSTNESS_LABELS,
   type AnalysisItem,
   type IncidentAnalysis,
   type IncidentRecord,
@@ -36,12 +41,32 @@ function childrenLabel(record: IncidentRecord): string {
 
 function itemsToMd(items: AnalysisItem[]): string[] {
   if (items.length === 0) return ['- （なし）'];
-  return items.map((it) => `- ${it.text}（${CONFIDENCE_LABELS[it.confidence]}）`);
+  return items.map((it) => {
+    const meta = [
+      it.severity && `重さ: ${SEVERITY_LABELS[it.severity]}`,
+      it.basis ? EVIDENCE_BASIS_LABELS[it.basis] : CONFIDENCE_LABELS[it.confidence],
+    ].filter(Boolean);
+    return `- ${it.text}（${meta.join(' / ')}）`;
+  });
 }
 
 function analysisToMd(a: IncidentAnalysis): string[] {
   const lines: string[] = [];
   lines.push('### AIによる分析', '');
+  if (a.verdict) {
+    lines.push(
+      `**今回の判定**: ${VERDICT_LEANING_LABELS[a.verdict.leaning]}（${VERDICT_ROBUSTNESS_LABELS[a.verdict.robustness]}）`,
+      '',
+      a.verdict.headline,
+      '',
+      `- 理由: ${a.verdict.reasoning}`,
+      `- 立場を入れ替えた確認: ${a.verdict.roleReversalCheck}`,
+      `- 判定が変わりうる条件: ${a.verdict.whatWouldChange}`,
+      '',
+    );
+  } else {
+    lines.push(`_旧基準（${a.promptVersion}）の分析のため、判定はありません。_`, '');
+  }
   lines.push(`**最初の見解**: ${a.conciseView}`, '');
 
   lines.push('#### 確認できる事実', ...itemsToMd(a.verifiedFacts), '');
@@ -51,27 +76,31 @@ function analysisToMd(a: IncidentAnalysis): string[] {
   lines.push('#### 自分側の改善点', ...itemsToMd(a.userImprovementPoints), '');
   lines.push('#### 相手側の問題点', ...itemsToMd(a.otherPartyProblemPoints), '');
 
-  lines.push('#### バランスの取れた結論', a.balancedConclusion, '');
-
   if (a.responsibilityBreakdown.length > 0) {
     lines.push('#### 論点別の責任整理', '');
-    lines.push('| 論点 | 自分側 | 相手側 | 判断 |', '| --- | --- | --- | --- |');
+    lines.push('| 論点 | 自分側 | 相手側 | 判断 | 重さ |', '| --- | --- | --- | --- | --- |');
     for (const row of a.responsibilityBreakdown) {
       lines.push(
-        `| ${row.topic} | ${row.userSide ?? '—'} | ${row.otherSide ?? '—'} | ${RESPONSIBILITY_JUDGMENT_LABELS[row.judgment]} |`,
+        `| ${row.topic} | ${row.userSide ?? '—'} | ${row.otherSide ?? '—'} | ${RESPONSIBILITY_JUDGMENT_LABELS[row.judgment]} | ${row.severity ? SEVERITY_LABELS[row.severity] : '—'} |`,
       );
     }
     lines.push('');
   }
 
+  lines.push('#### 論点ごとの結論', a.balancedConclusion, '');
+
   if (a.nextActions.length > 0) {
     lines.push('#### 次回の具体的対応', ...a.nextActions.map((x, i) => `${i + 1}. ${x}`), '');
   }
 
-  lines.push('#### 相手へ伝える短文');
-  lines.push(`- やわらかい: ${a.replySuggestions.gentle}`);
-  lines.push(`- 標準: ${a.replySuggestions.standard}`);
-  lines.push(`- 境界線を明確にする: ${a.replySuggestions.firm}`, '');
+  const replies = [
+    ['やわらかい', a.replySuggestions.gentle],
+    ['標準', a.replySuggestions.standard],
+    ['境界線を明確にする', a.replySuggestions.firm],
+  ].filter(([, text]) => text.trim());
+  if (replies.length > 0) {
+    lines.push('#### 相手へ伝える短文', ...replies.map(([label, text]) => `- ${label}: ${text}`), '');
+  }
 
   if (a.positiveActions.length > 0) {
     lines.push('#### 良い出来事', ...itemsToMd(a.positiveActions), '');
@@ -83,7 +112,8 @@ function analysisToMd(a: IncidentAnalysis): string[] {
     lines.push(
       '#### 検出されたパターン（発言・行動）',
       ...a.detectedPatterns.map(
-        (p) => `- **${p.label}**: ${p.description}（${CONFIDENCE_LABELS[p.confidence]}）`,
+        (p) =>
+          `- **${p.label}**${p.actor && p.actor !== 'unclear' ? `［${ISSUE_ACTOR_LABELS[p.actor]}］` : ''}: ${p.description}（${CONFIDENCE_LABELS[p.confidence]}）`,
       ),
       '',
     );
@@ -96,7 +126,7 @@ function analysisToMd(a: IncidentAnalysis): string[] {
     );
   }
   lines.push(
-    `<sub>分析メタ: モデル ${a.aiModel} / プロンプト ${a.promptVersion} / ${fmtDateTime(a.generatedAt)}</sub>`,
+    `<sub>分析メタ: モデル ${a.aiModel} / 判定基準 ${a.promptVersion} / ${fmtDateTime(a.generatedAt)}</sub>`,
     '',
   );
   return lines;

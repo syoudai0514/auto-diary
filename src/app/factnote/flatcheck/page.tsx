@@ -38,6 +38,9 @@ import type {
   IncidentRecord,
 } from '@/lib/factnote/types';
 
+/** 「真ん中に寄せる」設計だった旧プロンプトのバージョン。 */
+const LEGACY_FLAT_CHECK_VERSIONS = new Set(['v1']);
+
 export default function FlatCheckPage() {
   return (
     <Suspense>
@@ -123,7 +126,11 @@ function FlatCheckFlow() {
     if (!force) {
       const history = await listFlatChecks(record.id);
       const cached = history.find(
-        (f) => f.scope === selectedScope && f.createdAt >= record.updatedAt,
+        (f) =>
+          f.scope === selectedScope &&
+          f.createdAt >= record.updatedAt &&
+          // 判定基準を改めた旧バージョンの結果は再利用しない
+          !LEGACY_FLAT_CHECK_VERSIONS.has(f.promptVersion ?? ''),
       );
       if (cached) {
         setResult(cached);

@@ -20,7 +20,7 @@ describe('サンプルデータとモックAI', () => {
     expect(records.some((r) => r.isRepairAction)).toBe(true);
   });
 
-  it('分析済みサンプルは分析の全セクションと返信案3種を持つ', () => {
+  it('分析済みサンプルは分析の全セクション・判定・返信案を持つ', () => {
     const analyzed = buildSampleRecords().find((r) => r.analysis);
     expect(analyzed).toBeDefined();
     const a = analyzed!.analysis!;
@@ -29,7 +29,9 @@ describe('サンプルデータとモックAI', () => {
     expect(a.unknowns.length).toBeGreaterThan(0);
     expect(a.replySuggestions.gentle).toBeTruthy();
     expect(a.replySuggestions.standard).toBeTruthy();
-    expect(a.replySuggestions.firm).toBeTruthy();
+    // 境界線を引く必要のない場面（自分側が主）では firm を作らない
+    expect(a.verdict?.leaning).toBe('user_more');
+    expect(a.replySuggestions.firm).toBe('');
     expect(a.nextActions.length).toBeLessThanOrEqual(3);
     expect(a.responsibilityBreakdown.length).toBeGreaterThan(0);
     expect(a.aiModel).toBeTruthy();

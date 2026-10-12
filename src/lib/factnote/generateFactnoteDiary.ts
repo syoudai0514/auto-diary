@@ -6,7 +6,16 @@ import {
   buildFactnoteDiarySystemPrompt,
   buildFactnoteDiaryUserPrompt,
 } from './prompts/diary';
-import type { DiaryMode, IncidentAnalysis } from './types';
+import {
+  SEVERITY_LABELS,
+  VERDICT_LEANING_LABELS,
+  VERDICT_ROBUSTNESS_LABELS,
+  type AnalysisItem,
+  type DiaryMode,
+  type IncidentAnalysis,
+} from './types';
+
+const withSeverity = (i: AnalysisItem) => (i.severity ? `${i.text}（${SEVERITY_LABELS[i.severity]}）` : i.text);
 
 /** 日記生成（依頼書 §12.10 / §25。`generateDiary.ts` と同じ構造化出力パターン）。 */
 
@@ -42,15 +51,20 @@ export class FactnoteDiaryError extends Error {
  */
 export function analysisSummaryForDiary(analysis: IncidentAnalysis): string {
   const lines: string[] = [];
+  if (analysis.verdict) {
+    lines.push(
+      `判定: ${VERDICT_LEANING_LABELS[analysis.verdict.leaning]}（${VERDICT_ROBUSTNESS_LABELS[analysis.verdict.robustness]}）— ${analysis.verdict.headline}`,
+    );
+  }
   lines.push(`見解: ${analysis.conciseView}`);
   if (analysis.verifiedFacts.length > 0) {
     lines.push(`確認できる事実: ${analysis.verifiedFacts.map((i) => i.text).join(' / ')}`);
   }
   if (analysis.userImprovementPoints.length > 0) {
-    lines.push(`自分側の改善点: ${analysis.userImprovementPoints.map((i) => i.text).join(' / ')}`);
+    lines.push(`自分側の改善点: ${analysis.userImprovementPoints.map(withSeverity).join(' / ')}`);
   }
   if (analysis.otherPartyProblemPoints.length > 0) {
-    lines.push(`相手側の問題点: ${analysis.otherPartyProblemPoints.map((i) => i.text).join(' / ')}`);
+    lines.push(`相手側の問題点: ${analysis.otherPartyProblemPoints.map(withSeverity).join(' / ')}`);
   }
   if (analysis.nextActions.length > 0) {
     lines.push(`次回の対応: ${analysis.nextActions.join(' / ')}`);

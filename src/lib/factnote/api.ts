@@ -161,3 +161,28 @@ export async function factnoteMemoDraftApi(purpose: string): Promise<{ title: st
   }
   return data.draft;
 }
+
+/** AIが返す全体の見解（参照は #番号のまま。記録IDへの変換はクライアントで行う）。 */
+export interface OverallReviewApiResponse {
+  review: import('./overallReview').OverallReviewPayload;
+  aiModel: string;
+  promptVersion: string;
+}
+
+/** 全体の見解。送るのは各記録の分析結果の要約とローカル集計のみ（本文は送らない）。 */
+export async function factnoteOverallReviewApi(
+  digest: string,
+  peopleContext?: string,
+): Promise<OverallReviewApiResponse> {
+  const res = await postJson(
+    '/api/factnote/overall-review',
+    { digest, peopleContext },
+    AI_REQUEST_TIMEOUT_MS,
+    '全体の見解の生成がタイムアウトしました。',
+  );
+  const data = await res.json();
+  if (typeof data?.review?.overallView !== 'string') {
+    throw new ApiError(500, 'invalid_response', 'サーバーからの応答が不正でした。');
+  }
+  return data as OverallReviewApiResponse;
+}

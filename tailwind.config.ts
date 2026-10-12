@@ -23,6 +23,8 @@ const config: Config = {
         warning: 'var(--c-warning)',
         'warning-soft': 'var(--c-warning-soft)',
         success: 'var(--c-success)',
+        'side-user': 'var(--c-side-user)',
+        'side-other': 'var(--c-side-other)',
       },
       fontFamily: {
         sans: [
