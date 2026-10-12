@@ -46,7 +46,7 @@ function itemsToMd(items: AnalysisItem[]): string[] {
       it.severity && `重さ: ${SEVERITY_LABELS[it.severity]}`,
       it.basis ? EVIDENCE_BASIS_LABELS[it.basis] : CONFIDENCE_LABELS[it.confidence],
     ].filter(Boolean);
-    return `- ${it.text}（${meta.join(' / ')}）`;
+    return `- ${it.text}（${meta.join(' / ')}）${it.suggestion ? `\n  - 直し方: ${it.suggestion}` : ''}`;
   });
 }
 

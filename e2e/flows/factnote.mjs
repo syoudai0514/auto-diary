@@ -26,6 +26,7 @@ const sampleAnalysis = {
       evidenceIds: [],
       severity: 'moderate',
       basis: 'user_claim',
+      suggestion: '頼まれたその場でリマインダーに登録し「登録したよ」と返す',
     },
   ],
   otherPartyProblemPoints: [
@@ -36,6 +37,7 @@ const sampleAnalysis = {
       evidenceIds: [],
       severity: 'minor',
       basis: 'user_claim',
+      suggestion: '「いつも」ではなく今回の件に限定して伝える',
     },
   ],
   balancedConclusion: 'ミスの訂正と表現の適切さは別の論点として扱うのが妥当です。',
@@ -70,7 +72,7 @@ const sampleAnalysis = {
   repairActions: [],
   safetyFlags: [],
   aiModel: 'e2e-mock',
-  promptVersion: 'v3',
+  promptVersion: 'v4',
   generatedAt: '2026-07-13T00:00:00.000Z',
 };
 
@@ -150,6 +152,9 @@ export async function run({ base, invite, newPage, imageFile }) {
     '相手側の問題点',
     '中程度',
     '軽微',
+    '次からは',
+    '相手が直すとよいこと',
+    '今回の件に限定して伝える',
     '論点ごとの整理',
     '論点ごとの結論',
     '相手へ伝える短文',

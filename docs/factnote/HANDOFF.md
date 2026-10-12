@@ -84,6 +84,10 @@
   - **全体の見解**（`/factnote/overview`、分析ハブの先頭カード）: ①判定基準の状態と一括再分析 ②記録全体のかたち（ローカル: 判定の内訳バー・重さの内訳・月ごとの推移・繰り返しパターン・偏り警告）③AI総評（`/api/factnote/overall-review`、プロンプト `overallReview.ts` v1。送るのは各記録の分析要約+集計のみで本文は送らない。最大120件。#番号→記録リンク。meta に最新+1つ前を保存、記録が変わると「更新する」）
   - テスト: `overview.test.ts` / `bulkReanalysis.test.ts` 追加、`analyzeIncident.test.ts`（生成順・判定・重さ・プロンプト内容）拡充。E2E `factnote-overview.mjs` 追加、`factnote.mjs` を v3 に更新
 
+- **直し方の提示（判定 v4 / 全体の見解 v2 — フィードバック「相手の直した方がいいことも」）**:
+  - 一件の分析: 改善点・問題点の各項目に `suggestion`（代わりにどうするとよいか。具体的な行動・言い方）。相手側にも行動レベルで付ける（人格への注文は禁止）。UI は「次からは」「相手が直すとよいこと」。v4 に上げたので v3 の記録も「全体の見解」で再分析対象になる
+  - 全体の見解: 繰り返しの課題ごとに直し方、二人の間の悪循環（`interactionCycle`）と断ち切るポイント、「相手が直した方がいいこと（伝えてよいこと）」。旧形式の保存済み総評も表示できる（欠けたフィールドは非表示）
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -96,6 +100,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - 画面ロック（PIN + 生体認証）追加完了時点: typecheck ✅ / test **372件** ✅ / lint ✅ / build ✅ / **test:e2e 全7フロー PASS（+ factnote-lock）** ✅
 - 分析の安全フィルタ誤ブロック修正（BLOCK_NONEへ再緩和＋診断ログ強化）完了時点: typecheck ✅ / test **377件** ✅ / lint ✅ / build ✅ / test:e2e 全7フロー PASS ✅
 - 判定ロジック v3 + 全体の見解 完了時点: typecheck ✅ / test **401件** ✅ / lint ✅ / build ✅ / **test:e2e 全8フロー PASS（+ factnote-overview）** ✅
+- 直し方の提示（v4 / 総評 v2）完了時点: typecheck ✅ / test **403件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 

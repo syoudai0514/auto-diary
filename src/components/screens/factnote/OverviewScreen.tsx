@@ -558,6 +558,14 @@ function ReviewBody({
       <IssueGroup title="自分側の繰り返しの課題" side="user" issues={review.userRecurringIssues} recordsById={recordsById} />
       <IssueGroup title="相手側の繰り返しの課題" side="other" issues={review.otherRecurringIssues} recordsById={recordsById} />
 
+      {review.interactionCycle && (
+        <Section title="二人の間で繰り返されている流れ">
+          <p className="rounded-card border border-border px-4 py-3 text-[14px] leading-[1.85]">
+            {review.interactionCycle}
+          </p>
+        </Section>
+      )}
+
       <TextList title="うまくいっていること" items={review.strengths} tone="success" />
       <TextList title="衝突が起きやすいきっかけ" items={review.conflictTriggers} />
       {review.childImpact && (
@@ -566,7 +574,7 @@ function ReviewBody({
         </Section>
       )}
       <NumberedList title="あなたが取り組むと効果が大きいこと" items={review.userFocus} />
-      <NumberedList title="相手に求めてよいこと" items={review.requestsToOther} />
+      <NumberedList title="相手が直した方がいいこと（伝えてよいこと）" items={review.requestsToOther} />
       <TextList title="記録からは判断できないこと" items={review.cannotJudge} muted />
 
       {review.closingMessage && (
@@ -616,6 +624,14 @@ function IssueGroup({
                 <SeverityBadge severity={issue.severity} />
                 <span className="text-[11.5px] text-text-tertiary">{issue.count}件の記録</span>
               </div>
+              {issue.suggestion && (
+                <div className="mt-2.5 rounded-chip bg-surface px-3 py-2">
+                  <div className="text-[11px] font-semibold text-accent">
+                    {side === 'user' ? 'こう直すとよい' : '相手がこう直すとよい'}
+                  </div>
+                  <p className="mt-0.5 text-[13.5px] leading-[1.75]">{issue.suggestion}</p>
+                </div>
+              )}
               {issue.recordIds.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {issue.recordIds.slice(0, 6).map((id) => {

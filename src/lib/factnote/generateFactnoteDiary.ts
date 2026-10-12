@@ -15,7 +15,8 @@ import {
   type IncidentAnalysis,
 } from './types';
 
-const withSeverity = (i: AnalysisItem) => (i.severity ? `${i.text}（${SEVERITY_LABELS[i.severity]}）` : i.text);
+const withSeverity = (i: AnalysisItem) =>
+  `${i.text}${i.severity ? `（${SEVERITY_LABELS[i.severity]}）` : ''}${i.suggestion ? ` → 直し方: ${i.suggestion}` : ''}`;
 
 /** 日記生成（依頼書 §12.10 / §25。`generateDiary.ts` と同じ構造化出力パターン）。 */
 

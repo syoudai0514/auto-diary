@@ -57,11 +57,13 @@ export function AnalysisView({
 
       <IssueSection
         title="自分側の改善点"
+        suggestionLabel="次からは"
         items={analysis.userImprovementPoints}
         empty={analysis.verdict ? '今回、自分側に指摘すべき問題はありません。' : undefined}
       />
       <IssueSection
         title="相手側の問題点"
+        suggestionLabel="相手が直すとよいこと"
         items={analysis.otherPartyProblemPoints}
         empty={analysis.verdict ? '今回、相手側に指摘すべき問題はありません。' : undefined}
       />
@@ -228,7 +230,17 @@ function SafetyCard({ analysis }: { analysis: IncidentAnalysis }) {
 }
 
 /** 自分側・相手側の問題（重さ・根拠の種類付き）。空なら「問題なし」を明示する。 */
-function IssueSection({ title, items, empty }: { title: string; items: AnalysisItem[]; empty?: string }) {
+function IssueSection({
+  title,
+  items,
+  empty,
+  suggestionLabel,
+}: {
+  title: string;
+  items: AnalysisItem[];
+  empty?: string;
+  suggestionLabel: string;
+}) {
   if (items.length === 0) {
     if (!empty) return null;
     return (
@@ -249,6 +261,12 @@ function IssueSection({ title, items, empty }: { title: string; items: AnalysisI
               {it.severity && <SeverityBadge severity={it.severity} />}
               {it.basis ? <BasisBadge basis={it.basis} /> : <ConfidenceBadge level={it.confidence} />}
             </div>
+            {it.suggestion && (
+              <div className="mt-2.5 rounded-chip bg-surface px-3 py-2">
+                <div className="text-[11px] font-semibold text-accent">{suggestionLabel}</div>
+                <p className="mt-0.5 text-[13.5px] leading-[1.75]">{it.suggestion}</p>
+              </div>
+            )}
           </li>
         ))}
       </ul>

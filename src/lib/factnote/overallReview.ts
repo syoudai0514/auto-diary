@@ -17,6 +17,7 @@ const SEVERITY = z.enum(['minor', 'moderate', 'serious']).catch('moderate');
 
 const RecurringIssueSchema = z.object({
   text: z.string(),
+  suggestion: z.string().catch(''),
   severity: SEVERITY,
   count: z.number().int().nonnegative().catch(1),
   refs: z.array(z.number().int()).catch([]),
@@ -27,6 +28,7 @@ export const OverallReviewPayloadSchema = z.object({
   otherRecurringIssues: z.array(RecurringIssueSchema),
   strengths: z.array(z.string()),
   conflictTriggers: z.array(z.string()),
+  interactionCycle: z.string().catch(''),
   childImpact: z.string(),
   safetyConcerns: z.string(),
   responsibilityReason: z.string(),
@@ -55,9 +57,10 @@ const ISSUES = {
       severity: { type: Type.STRING, description: '"minor" / "moderate" / "serious"' },
       count: { type: Type.INTEGER, description: '該当した記録数' },
       refs: { type: Type.ARRAY, items: { type: Type.INTEGER }, description: '根拠の記録番号（#の数字）' },
+      suggestion: { type: Type.STRING, description: 'どう直すとよいか（具体的な行動・言い方）' },
     },
-    required: ['text', 'severity', 'count', 'refs'],
-    propertyOrdering: ['text', 'severity', 'count', 'refs'],
+    required: ['text', 'severity', 'count', 'refs', 'suggestion'],
+    propertyOrdering: ['text', 'severity', 'count', 'refs', 'suggestion'],
   },
 };
 
@@ -69,6 +72,7 @@ const ORDER = [
   'otherRecurringIssues',
   'strengths',
   'conflictTriggers',
+  'interactionCycle',
   'childImpact',
   'safetyConcerns',
   'responsibilityReason',
@@ -89,6 +93,10 @@ export const OVERALL_REVIEW_RESPONSE_SCHEMA = {
     otherRecurringIssues: { ...ISSUES, description: '相手側の繰り返しの課題（重い順・最大5件）' },
     strengths: { ...STRINGS, description: 'うまくいっていること（最大4件）' },
     conflictTriggers: { ...STRINGS, description: '衝突のきっかけ・状況（最大4件）' },
+    interactionCycle: {
+      type: Type.STRING,
+      description: '二人の間で繰り返される悪循環と、断ち切れるポイント。読み取れなければ空文字',
+    },
     childImpact: { type: Type.STRING, description: '子どもが同席した衝突の事実。なければ空文字' },
     safetyConcerns: { type: Type.STRING, description: '安全上の懸念と勧める行動。なければ空文字' },
     responsibilityReason: { type: Type.STRING, description: '責任の傾向の理由（重さと繰り返しで）' },
@@ -103,7 +111,7 @@ export const OVERALL_REVIEW_RESPONSE_SCHEMA = {
     },
     cannotJudge: { ...STRINGS, description: '判断できないこと・データの限界（最大4件）' },
     userFocus: { ...STRINGS, description: '記録者が取り組むこと（最大3件）' },
-    requestsToOther: { ...STRINGS, description: '相手に求めてよいこと（最大3件）' },
+    requestsToOther: { ...STRINGS, description: '相手が直した方がいいこと・求めてよいこと（最大3件）' },
     overallView: { type: Type.STRING, description: '4〜6文の全体の見解。1文目で言い切る' },
     closingMessage: { type: Type.STRING, description: '記録者への短い一言' },
   },

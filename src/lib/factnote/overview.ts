@@ -298,10 +298,11 @@ export function buildOverviewDigest(
 
 /** AI応答（overallReview.ts の OverallReviewPayload と同形。サーバー依存を持ち込まないよう構造で受ける）。 */
 export interface OverallReviewPayloadLike {
-  userRecurringIssues: Array<{ text: string; severity: Severity; count: number; refs: number[] }>;
-  otherRecurringIssues: Array<{ text: string; severity: Severity; count: number; refs: number[] }>;
+  userRecurringIssues: Array<{ text: string; suggestion?: string; severity: Severity; count: number; refs: number[] }>;
+  otherRecurringIssues: Array<{ text: string; suggestion?: string; severity: Severity; count: number; refs: number[] }>;
   strengths: string[];
   conflictTriggers: string[];
+  interactionCycle?: string;
   childImpact: string;
   safetyConcerns: string;
   responsibilityReason: string;
@@ -332,6 +333,7 @@ export function resolveOverallReview(
   const issues = (list: OverallReviewPayloadLike['userRecurringIssues']) =>
     list.slice(0, 5).map((it) => ({
       text: it.text,
+      suggestion: it.suggestion?.trim() || undefined,
       severity: it.severity,
       count: it.count,
       recordIds: toIds(it.refs),
@@ -347,6 +349,7 @@ export function resolveOverallReview(
     otherRecurringIssues: issues(payload.otherRecurringIssues),
     strengths: nonEmpty(payload.strengths, 4),
     conflictTriggers: nonEmpty(payload.conflictTriggers, 4),
+    interactionCycle: payload.interactionCycle?.trim() || undefined,
     childImpact: payload.childImpact.trim(),
     safetyConcerns: payload.safetyConcerns.trim(),
     userFocus: nonEmpty(payload.userFocus, 3),

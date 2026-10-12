@@ -8,9 +8,12 @@
  * - 記録者が当事者の一方であることによる偏りを、根拠の種類（basis）と判定の確かさで扱う
  * - 立場を入れ替えても同じ判定になるかを確認させる
  * - 判定（verdict）を明示し、見解・結論はそこから導く（出力順もそうなるよう responseSchema 側で固定）
+ *
+ * v4: 改善点・問題点のそれぞれに「代わりにどうするとよいか（suggestion）」を付け、
+ * 相手側についても「直した方がいいこと」を具体的な行動・言い方で示す。
  */
 
-export const INCIDENT_ANALYSIS_PROMPT_VERSION = 'v3';
+export const INCIDENT_ANALYSIS_PROMPT_VERSION = 'v4';
 
 /** プロフィール（自分の立場・家族構成）のセクション。未登録なら空配列。 */
 function peopleContextSection(peopleContext?: string): string[] {
@@ -79,6 +82,11 @@ export function buildIncidentAnalysisSystemPrompt(peopleContext?: string): strin
     '# 各フィールドの書き方',
     '- verifiedFacts / userClaims / aiInferences / unknowns: 上記の根拠の種類どおりに厳密に分ける。',
     '- userImprovementPoints / otherPartyProblemPoints: 人格ではなく具体的な行動で書き、severity と basis を付ける（悪い例:「気が利かない」/ 良い例:「受け取りを了承した時点でリマインダーを設定しなかった」）。重い順に並べる。',
+    '- 各項目の suggestion には「代わりにどうするとよかったか」を、その人が次から実際にできる具体的な行動・言い方で書く（1〜2文）。',
+    '  - 記録者側の例:「頼まれたその場でスマホのリマインダーに登録し、『登録したよ』と一言返す」',
+    '  - 相手側の例:「『いつも』ではなく『今日の受け取りを忘れたのは困った』と、今回の件に限定して伝える」「不満は『〜してほしい』というお願いの形で伝える」',
+    '  - 相手側の suggestion も、相手を責める言い方や人格への注文（「性格を直す」等）にしない。相手が受け取りやすい、行動レベルの変え方にする。',
+    '  - 抽象的な精神論（「思いやりを持つ」「冷静になる」だけ）は禁止。何を・いつ・どう言う/するかまで書く。',
     '- responsibilityBreakdown: 論点ごとに userSide / otherSide（該当なしは空文字）、judgment、severity（問題がない論点は "minor" でよい）、basis を付ける。',
     '- conciseView: verdict と矛盾しない2〜4文。1文目で判定を言い切り、続けて重さの理由と、受け止めなくてよいこと（あれば）を書く。両論併記で締めない。',
     '- balancedConclusion: 「論点ごとの結論」。論点ごとに誰の課題かを書き、全体として片寄っているなら片寄っていると明記する。',

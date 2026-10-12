@@ -125,6 +125,8 @@ export interface AnalysisItem {
   severity?: Severity;
   /** 根拠の種類（改善点・問題点のみ。v3〜）。 */
   basis?: EvidenceBasis;
+  /** 代わりにどうするとよいか（改善点・問題点のみ。v4〜）。具体的な行動・言い方。 */
+  suggestion?: string;
 }
 
 /** 問題の重さ。自分側・相手側に同じ物差しで付ける。 */
@@ -530,6 +532,8 @@ export type ResponsibilityTendency =
 /** 繰り返し見られる課題（refs は記録IDに変換済み）。 */
 export interface RecurringIssue {
   text: string;
+  /** 直し方（具体的な行動・言い方）。overallReview v2〜。 */
+  suggestion?: string;
   severity: Severity;
   /** 該当した記録数（AIが要約から数えた値）。 */
   count: number;
@@ -546,6 +550,8 @@ export interface OverallReview {
   otherRecurringIssues: RecurringIssue[];
   strengths: string[];
   conflictTriggers: string[];
+  /** 二人の間で繰り返される悪循環（overallReview v2〜）。 */
+  interactionCycle?: string;
   childImpact: string;
   safetyConcerns: string;
   userFocus: string[];
