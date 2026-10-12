@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
+import { extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import {
   buildObjectiveProfileSystemPrompt,
@@ -63,8 +64,9 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const model = chatModel();
-    const ai = getGemini(keyResult.apiKey);
+    const model = factnoteModel();
+    const gemini = withModelFallback(getGemini(keyResult.apiKey), model);
+    const ai = gemini.ai;
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: 'user', parts: [{ text: buildObjectiveProfileUserPrompt(stats) }] }],
@@ -84,7 +86,7 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({
       summary,
-      aiModel: model,
+      aiModel: gemini.modelUsed(),
       promptVersion: OBJECTIVE_PROFILE_PROMPT_VERSION,
     });
   } catch (err: unknown) {

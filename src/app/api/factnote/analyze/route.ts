@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, getGemini } from '@/lib/gemini';
+import { getGemini } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import {
   analyzeIncident,
@@ -95,8 +96,9 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const model = chatModel();
-    const payload = await analyzeIncident(getGemini(keyResult.apiKey), {
+    const model = factnoteModel();
+    const gemini = withModelFallback(getGemini(keyResult.apiKey), model);
+    const payload = await analyzeIncident(gemini.ai, {
       sourceText,
       context: sanitizeContext(contextRaw),
       peopleContext:
@@ -105,7 +107,7 @@ export async function POST(req: Request) {
           : undefined,
       model,
     });
-    const result = toIncidentAnalysisResult(payload, { aiModel: model });
+    const result = toIncidentAnalysisResult(payload, { aiModel: gemini.modelUsed() });
     return NextResponse.json({ result });
   } catch (err: unknown) {
     if (err instanceof IncidentAnalysisError) {

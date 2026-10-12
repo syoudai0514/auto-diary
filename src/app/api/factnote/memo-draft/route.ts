@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
+import { extractText, getGemini, REFLECTIVE_SAFETY_SETTINGS } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { z } from 'zod';
 import { Type } from '@google/genai';
@@ -71,10 +72,10 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const ai = getGemini(keyResult.apiKey);
+    const ai = withModelFallback(getGemini(keyResult.apiKey)).ai;
     for (let attempt = 0; attempt <= 1; attempt++) {
       const response = await ai.models.generateContent({
-        model: chatModel(),
+        model: factnoteModel(),
         contents: [{ role: 'user', parts: [{ text: buildMemoDraftUserPrompt(purpose) }] }],
         config: {
           systemInstruction: buildMemoDraftSystemPrompt(),

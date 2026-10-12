@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, getGemini } from '@/lib/gemini';
+import { getGemini } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { OverallReviewError, runOverallReview } from '@/lib/factnote/overallReview';
 import { OVERALL_REVIEW_PROMPT_VERSION } from '@/lib/factnote/prompts/overallReview';
@@ -66,8 +67,9 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const model = chatModel();
-    const review = await runOverallReview(getGemini(keyResult.apiKey), {
+    const model = factnoteModel();
+    const gemini = withModelFallback(getGemini(keyResult.apiKey), model);
+    const review = await runOverallReview(gemini.ai, {
       digest,
       peopleContext:
         typeof peopleContextRaw === 'string' && peopleContextRaw.trim()
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
           : undefined,
       model,
     });
-    return NextResponse.json({ review, aiModel: model, promptVersion: OVERALL_REVIEW_PROMPT_VERSION });
+    return NextResponse.json({ review, aiModel: gemini.modelUsed(), promptVersion: OVERALL_REVIEW_PROMPT_VERSION });
   } catch (err: unknown) {
     if (err instanceof OverallReviewError) {
       console.error('[factnote-overall] parse error');
