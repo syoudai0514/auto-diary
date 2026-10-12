@@ -3,7 +3,7 @@
 import { ApiError } from '../api';
 import { expandToChunks, MAX_CLIENT_AUDIO_BYTES } from '../audioChunk';
 import { combineTranscripts } from '../format';
-import { withRetryOn429 } from '../retry';
+import { withRetryOnBusy } from '../retry';
 import {
   factnoteAnalyzeApi,
   factnoteTranscribeAudio,
@@ -100,7 +100,22 @@ async function persistRecord(
 }
 
 function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
+  return friendlyAiError(err) ?? fallback;
+}
+
+/**
+ * 利用者向けの失敗理由。Geminiの高負荷(503)や制限(429)は生のJSONエラーを見せず、
+ * 「時間をおけば直る」ことが伝わる文言にする。
+ */
+export function friendlyAiError(err: unknown): string | undefined {
+  if (!(err instanceof ApiError)) return undefined;
+  if (err.status === 503 || err.status === 504) {
+    return 'Geminiが混み合っています（一時的なエラー）。時間をおいて再実行してください。';
+  }
+  if (err.status === 429) return 'リクエストが多すぎて制限されました。少し待ってから再実行してください。';
+  if (err.status === 408) return '応答に時間がかかりすぎました。';
+  // 生のJSONエラーなどが入っていても、長すぎる文言は切り詰める
+  return err.message.length > 120 ? `${err.message.slice(0, 120)}…` : err.message;
 }
 
 export interface TranscribeJobOptions {
@@ -169,7 +184,7 @@ export function startTranscribeJob(opts: TranscribeJobOptions): FactnoteJob {
           job.progress = { current: done, total: totalChunks };
           emit({ type: 'progress', job });
           parts.push(
-            await withRetryOn429(() =>
+            await withRetryOnBusy(() =>
               factnoteTranscribeAudio(chunk.blob, chunk.filename, opts.peopleContext),
             ),
           );
@@ -233,7 +248,11 @@ function registerAnalyzeJob(recordId: string): FactnoteJob {
  */
 async function runAnalyze(
   job: FactnoteJob,
-  opts: AnalyzeJobOptions & { maxRetries429?: number },
+  opts: AnalyzeJobOptions & {
+    maxRetries?: number;
+    shouldStop?: () => boolean;
+    onWait?: Parameters<typeof withRetryOnBusy>[3];
+  },
 ): Promise<IncidentRecord | undefined> {
   try {
     const current = await getRecord(opts.recordId);
@@ -243,9 +262,11 @@ async function runAnalyze(
       throw new ApiError(400, 'empty_source', '分析する内容がありません。');
     }
     const context = { ...opts.context, sourceType: opts.context.sourceType ?? describeSourceType(current) };
-    const result = await withRetryOn429(
+    const result = await withRetryOnBusy(
       () => factnoteAnalyzeApi(sourceText, context, opts.peopleContext),
-      opts.maxRetries429,
+      opts.maxRetries,
+      opts.shouldStop,
+      opts.onWait,
     );
     if (cancelledIds.has(opts.recordId)) {
       // キャンセル済みなら結果を反映しない（原本と文字起こしは保持。分析済みなら元の状態に戻す）
@@ -284,6 +305,10 @@ export interface BulkReanalysisState {
   currentTitle?: string;
   /** 判定が付いた/変わった記録（新しい判定の記録全件。before が無いのは旧基準・未分析）。 */
   changes: BulkChange[];
+  /** 失敗した記録と理由（再実行で再度対象になる）。 */
+  failures: Array<{ recordId: string; title: string; reason: string }>;
+  /** 待機中の説明（Geminiが混んでいる間など）。 */
+  notice?: string;
   /** 中断した理由（aborted のとき）。 */
   message?: string;
   startedAt: string;
@@ -360,6 +385,7 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
     done: 0,
     failed: 0,
     changes: [],
+    failures: [],
     startedAt: new Date().toISOString(),
   };
   emitBulk();
@@ -396,9 +422,21 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
             recordId,
             context: recordToContext(record),
             peopleContext: opts.peopleContext,
-            // 一括実行ではレート制限に当たりやすいので、待って再試行する回数を増やす
-            maxRetries429: 6,
+            // 一括実行では制限・高負荷(503)に当たりやすいので、待って再試行する回数を増やす
+            maxRetries: 6,
+            shouldStop: () => bulkCancel,
+            onWait: ({ seconds, status }) => {
+              bulkState = {
+                ...bulkState!,
+                notice:
+                  status === 429
+                    ? `リクエスト制限のため${seconds}秒待ってから再試行します…`
+                    : `Geminiが混み合っているため${seconds}秒待ってから再試行します…`,
+              };
+              emitBulk();
+            },
           });
+          bulkState = { ...bulkState!, notice: undefined };
           consecutiveFailures = 0;
           const after = updated?.analysis?.verdict?.leaning;
           bulkState = {
@@ -413,15 +451,20 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
           };
         } catch (err) {
           consecutiveFailures++;
-          bulkState = { ...bulkState!, done: bulkState!.done + 1, failed: bulkState!.failed + 1 };
+          const reason = friendlyAiError(err) ?? '分析に失敗しました。';
+          bulkState = {
+            ...bulkState!,
+            done: bulkState!.done + 1,
+            failed: bulkState!.failed + 1,
+            failures: [...bulkState!.failures, { recordId, title: record.title || '無題の記録', reason }],
+          };
           if (isFatalForBulk(err) || consecutiveFailures >= 3) {
             bulkState = {
               ...bulkState,
               status: 'aborted',
-              message:
-                err instanceof ApiError && consecutiveFailures < 3
-                  ? err.message
-                  : '続けて失敗したため中断しました。時間をおいて「再分析」を押すと、残りの記録から再開できます。',
+              message: isFatalForBulk(err)
+                ? reason
+                : `続けて失敗したため中断しました（${reason}）失敗した記録も含め、もう一度押すと残りから再開できます。`,
             };
             return;
           }
@@ -430,7 +473,7 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
       }
       bulkState = { ...bulkState!, status: 'done' };
     } finally {
-      bulkState = { ...bulkState!, currentTitle: undefined, finishedAt: new Date().toISOString() };
+      bulkState = { ...bulkState!, currentTitle: undefined, notice: undefined, finishedAt: new Date().toISOString() };
       emitBulk();
       await wakeLock?.release().catch(() => undefined);
     }

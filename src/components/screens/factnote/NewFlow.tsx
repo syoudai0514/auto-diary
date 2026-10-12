@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRecorder, extForMime, hasRecorderSupport } from '@/hooks/useRecorder';
-import { withRetryOn429 } from '@/lib/retry';
+import { withRetryOnBusy } from '@/lib/retry';
 import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi, type FactnoteAnalyzeResult } from '@/lib/factnote/api';
 import {
@@ -498,7 +498,7 @@ export function FactnoteNewFlow({ mode }: { mode: NewFlowMode }) {
     }
     setStep('diaryGenerating');
     try {
-      const diary = await withRetryOn429(() =>
+      const diary = await withRetryOnBusy(() =>
         factnoteDiaryApi(
           mode,
           sourceTextOf(record),

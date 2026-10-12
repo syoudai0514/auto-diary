@@ -9,7 +9,7 @@ import {
 import { markMemoShown } from '@/components/screens/factnote/FutureMemoCard';
 import { ErrorScreen, ProcessingScreen } from '@/components/screens/StatusScreens';
 import { ApiError } from '@/lib/api';
-import { withRetryOn429 } from '@/lib/retry';
+import { withRetryOnBusy } from '@/lib/retry';
 import { factnoteFlatCheckApi } from '@/lib/factnote/api';
 import {
   buildPastComparison,
@@ -151,7 +151,7 @@ function FlatCheckFlow() {
     const pastComparison = buildPastComparison(past);
     const biasWarnings = detectDataBias([record, ...past]);
     try {
-      const check = await withRetryOn429(() =>
+      const check = await withRetryOnBusy(() =>
         factnoteFlatCheckApi({
           sourceText: sourceTextOf(record),
           analysisSummary: record.analysis ? analysisSummaryForDiary(record.analysis) : undefined,
