@@ -13,6 +13,23 @@ vi.mock('./api', async (orig) => ({
   factnoteAnalyzeApi: (...args: unknown[]) => analyzeMock(...args),
 }));
 
+// 待ち時間（10秒〜）は本物の retry.ts のテストで確認済み。ここでは待たずに回数だけ再現する
+vi.mock('../retry', async (orig) => {
+  const actual = await orig<typeof import('../retry')>();
+  return {
+    ...actual,
+    withRetryOnBusy: async <T,>(fn: () => Promise<T>, maxRetries = 4) => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await fn();
+        } catch (err) {
+          if (!actual.isBusyError(err) || attempt >= maxRetries) throw err;
+        }
+      }
+    },
+  };
+});
+
 const { startBulkReanalysis, subscribeBulkReanalysis, clearBulkReanalysis, cancelBulkReanalysis } = await import(
   './jobs'
 );
@@ -136,5 +153,43 @@ describe('一括再分析', () => {
     expect(state.status).toBe('cancelled');
     expect(analyzeMock).toHaveBeenCalledTimes(1);
     expect((await getRecord('a'))?.analysis?.verdict?.leaning).toBe('user_more');
+  });
+
+  it('Geminiの高負荷(503)は再試行で乗り切り、失敗として数えない', async () => {
+    await saveRecord(rec('a'));
+    analyzeMock
+      .mockRejectedValueOnce(new ApiError(503, 'analysis_failed', '{"error":{"code":503}}'))
+      .mockRejectedValueOnce(new ApiError(503, 'analysis_failed', '{"error":{"code":503}}'))
+      .mockResolvedValueOnce(result('user_more'));
+
+    const done = waitForFinish();
+    startBulkReanalysis({ recordIds: ['a'] });
+    const state = await done;
+
+    expect(state.status).toBe('done');
+    expect(state.failed).toBe(0);
+    expect(analyzeMock).toHaveBeenCalledTimes(3);
+    expect((await getRecord('a'))?.analysis?.verdict?.leaning).toBe('user_more');
+  });
+
+  it('503が続いて失敗した記録は、生のJSONではなく分かりやすい理由を残し、3連続で中断する', async () => {
+    for (const id of ['a', 'b', 'c', 'd']) await saveRecord(rec(id, { title: `記録${id}` }));
+    analyzeMock.mockRejectedValue(new ApiError(503, 'analysis_failed', '分析に失敗しました（{"error":{"code":503}}）'));
+
+    const done = waitForFinish();
+    startBulkReanalysis({ recordIds: ['a', 'b', 'c', 'd'] });
+    const state = await done;
+
+    expect(state.status).toBe('aborted');
+    expect(state.failed).toBe(3);
+    expect(state.failures).toHaveLength(3);
+    expect(state.failures[0].title).toBe('記録a');
+    expect(state.failures[0].reason).toContain('混み合っています');
+    expect(state.failures[0].reason).not.toContain('{');
+    expect(state.message).toContain('もう一度押すと');
+    // 失敗した記録は処理中のままにならず、再実行の対象に残る（分析済みなら ready、未分析なら draft）
+    expect((await getRecord('a'))?.status).toBe('draft');
+    // 中断で手つかずの記録はそのまま
+    expect((await getRecord('d'))?.status).toBe('ready');
   });
 });

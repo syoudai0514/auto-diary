@@ -27,7 +27,7 @@ import {
   type ReanalysisMode,
 } from '@/lib/factnote/overview';
 import { loadFactnoteProfile, profileToPeopleContext } from '@/lib/factnote/profile';
-import { withRetryOn429 } from '@/lib/retry';
+import { withRetryOnBusy } from '@/lib/retry';
 import type { IncidentRecord, OverallReview } from '@/lib/factnote/types';
 
 /**
@@ -84,7 +84,7 @@ export default function FactnoteOverviewPage() {
     try {
       const digest = buildOverviewDigest(records, stats);
       const profile = await loadFactnoteProfile().catch(() => undefined);
-      const res = await withRetryOn429(() =>
+      const res = await withRetryOnBusy(() =>
         factnoteOverallReviewApi(digest.text, profile ? profileToPeopleContext(profile) : undefined),
       );
       const outdatedCount = digest.refs.filter((id) => !recordsById.get(id)?.analysis?.verdict).length;

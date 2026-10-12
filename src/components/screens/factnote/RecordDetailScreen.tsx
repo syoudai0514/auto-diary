@@ -12,7 +12,7 @@ import {
   UsersIcon,
   XIcon,
 } from '@/components/icons';
-import { withRetryOn429 } from '@/lib/retry';
+import { withRetryOnBusy } from '@/lib/retry';
 import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi } from '@/lib/factnote/api';
 import { getAttachmentBlob, newFactnoteId } from '@/lib/factnote/db';
@@ -439,7 +439,7 @@ function DiaryTab({
     }
     setComposing('generating');
     try {
-      const diary = await withRetryOn429(() =>
+      const diary = await withRetryOnBusy(() =>
         factnoteDiaryApi(
           mode,
           source,

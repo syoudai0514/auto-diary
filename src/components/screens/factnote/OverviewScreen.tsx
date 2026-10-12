@@ -130,7 +130,13 @@ function BulkProgress({ bulk, onCancel }: { bulk: BulkReanalysisState; onCancel:
       {bulk.currentTitle && (
         <p className="mt-2 truncate text-[12.5px] text-text-secondary">「{bulk.currentTitle}」を分析中</p>
       )}
-      {bulk.failed > 0 && <p className="mt-1 text-[12px] text-warning">失敗 {bulk.failed}件（あとで再実行できます）</p>}
+      {bulk.notice && <p className="mt-1.5 rounded-chip bg-warning-soft px-3 py-1.5 text-[12px] text-warning">{bulk.notice}</p>}
+      {bulk.failed > 0 && (
+        <p className="mt-1 text-[12px] text-warning">
+          失敗 {bulk.failed}件{bulk.failures.length > 0 ? `（${bulk.failures[bulk.failures.length - 1].reason}）` : ''}
+          — 終わった後に「もう一度押す」と、失敗した記録だけやり直せます
+        </p>
+      )}
       <p className="mt-2 text-[11.5px] leading-relaxed text-text-tertiary">
         この画面を開いたままにしてください。アプリ内の別の画面へ移動しても続きますが、画面ロックや他のアプリへの切り替えで止まることがあります。止まっても完了した分は保存され、もう一度押すと残りから再開します。
       </p>
@@ -158,6 +164,21 @@ function BulkResult({ bulk, onDismiss }: { bulk: BulkReanalysisState; onDismiss:
         {bulk.done < bulk.total ? ` · 残り ${bulk.total - bulk.done}件` : ''}
       </p>
       {bulk.message && <p className="mt-1 text-[12.5px] leading-relaxed text-warning">{bulk.message}</p>}
+      {bulk.failures.length > 0 && (
+        <details className="mt-2">
+          <summary className="min-h-[36px] cursor-pointer list-none text-[12.5px] font-semibold text-warning">
+            失敗した記録 {bulk.failures.length}件を見る
+          </summary>
+          <ul className="mt-1 space-y-1.5">
+            {bulk.failures.slice(0, 20).map((f) => (
+              <li key={f.recordId} className="text-[12px] leading-relaxed">
+                <span className="font-medium">{f.title}</span>
+                <span className="block text-text-tertiary">{f.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {changed.length > 0 && (
         <div className="mt-3">
           <div className="text-[12px] font-semibold text-text-secondary">判定が付いた・変わった記録</div>
