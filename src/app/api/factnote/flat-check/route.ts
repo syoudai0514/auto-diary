@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, getGemini } from '@/lib/gemini';
+import { getGemini } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import { FlatCheckError, runFlatCheck, toFlatCheckAiPart } from '@/lib/factnote/flatCheck';
 import { buildMockFlatCheckAiPart } from '@/lib/factnote/fixtures';
@@ -71,15 +72,16 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const model = chatModel();
-    const payload = await runFlatCheck(getGemini(keyResult.apiKey), {
+    const model = factnoteModel();
+    const gemini = withModelFallback(getGemini(keyResult.apiKey), model);
+    const payload = await runFlatCheck(gemini.ai, {
       sourceText,
       analysisSummary: typeof analysisSummary === 'string' ? analysisSummary.slice(0, 8000) : undefined,
       pastStats: stats,
       biasWarnings: warnings,
       model,
     });
-    return NextResponse.json({ check: toFlatCheckAiPart(payload, { aiModel: model }) });
+    return NextResponse.json({ check: toFlatCheckAiPart(payload, { aiModel: gemini.modelUsed() }) });
   } catch (err: unknown) {
     if (err instanceof FlatCheckError) {
       console.error('[factnote-flatcheck] parse/generation error');

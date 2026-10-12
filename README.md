@@ -211,6 +211,8 @@ npm run lint       # ESLint
 | `KV_REST_API_TOKEN` | ✅ | 同上のアクセストークン。 | — |
 | `GEMINI_MODEL` | | 日記生成モデル。 | `gemini-3.1-flash-lite` |
 | `GEMINI_TRANSCRIBE_MODEL` | | 文字起こしに使うモデル。 | `gemini-3.1-flash-lite` |
+| `FACTNOTE_GEMINI_MODEL` | | 事実ノートの分析・日記などに使うモデル。未設定なら `GEMINI_MODEL`、それも無ければ既定。 | `gemini-3.5-flash-lite` |
+| `FACTNOTE_GEMINI_FALLBACK_MODEL` | | 事実ノートで主モデルが混雑（429/503）・利用不可（404）の時に1回だけ試す予備モデル。`none` で無効。 | `gemini-3.1-flash-lite` |
 | `SESSION_DAYS` | | ログインの有効日数。 | `30` |
 | `MAX_AUDIO_BYTES` | | 1リクエストあたりの音声アップロード上限（バイト）。 | `4194304`（4MB） |
 

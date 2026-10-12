@@ -94,6 +94,8 @@
   - 一括再分析: 1件あたり最大6回再試行。失敗理由を `failures` に保存して画面に表示（生のJSONエラーでなく「Geminiが混み合っています」等）。3連続失敗で中断。失敗した記録は旧基準のまま残るので、もう一度押せば失敗分だけやり直せる
   - モデルは `GEMINI_MODEL`（未設定なら `gemini-3.1-flash-lite`）。503 が続く時間帯は Vercel の環境変数で別モデルへ切り替え可能
 
+- **モデルを 3.5 flash-lite へ + 混雑時の自動切り替え**: 事実ノートの text 系ルート（analyze / diary / flat-check / overall-review / memo-draft / profile-summary）は `modelFallback.ts` の `factnoteModel()`（`FACTNOTE_GEMINI_MODEL` > `GEMINI_MODEL` > 既定 `gemini-3.5-flash-lite`）を使い、主モデルが 404/429/500/503/504 で失敗したら同じリクエストを予備（`FACTNOTE_GEMINI_FALLBACK_MODEL`、既定 `gemini-3.1-flash-lite`）で1回だけ試す（`withModelFallback`。無料枠の制限・高負荷はモデルごとに別枠のため）。記録の `aiModel` には実際に応答したモデルを残す。**既存の音声日記アプリは `GEMINI_MODEL`（既定 3.1）のまま**。未検証: 3.5 の出力品質・無料枠の実際の回数（公式ドキュメントに到達できず検索情報のみ）。出力がおかしければ Vercel の環境変数 `FACTNOTE_GEMINI_MODEL=gemini-3.1-flash-lite` で戻せる
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -108,6 +110,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - 判定ロジック v3 + 全体の見解 完了時点: typecheck ✅ / test **401件** ✅ / lint ✅ / build ✅ / **test:e2e 全8フロー PASS（+ factnote-overview）** ✅
 - 直し方の提示（v4 / 総評 v2）完了時点: typecheck ✅ / test **403件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 - 一括再分析の503対策 完了時点: typecheck ✅ / test **410件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
+- モデル切り替え 完了時点: typecheck ✅ / test **420件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 

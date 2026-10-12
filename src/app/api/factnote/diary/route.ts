@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiAuth';
 import { rateLimitDistributed } from '@/lib/rateLimit';
-import { chatModel, getGemini } from '@/lib/gemini';
+import { getGemini } from '@/lib/gemini';
+import { factnoteModel, withModelFallback } from '@/lib/factnote/modelFallback';
 import { aiErrorResponse, resolveGeminiApiKey } from '@/lib/aiRoute';
 import {
   FactnoteDiaryError,
@@ -73,7 +74,8 @@ export async function POST(req: Request) {
   if (keyResult instanceof NextResponse) return keyResult;
 
   try {
-    const diary = await generateFactnoteDiary(getGemini(keyResult.apiKey), {
+    const model = factnoteModel();
+    const diary = await generateFactnoteDiary(withModelFallback(getGemini(keyResult.apiKey), model).ai, {
       mode: mode as DiaryMode,
       sourceText,
       analysisSummary: typeof analysisSummary === 'string' ? analysisSummary : undefined,
@@ -81,7 +83,7 @@ export async function POST(req: Request) {
         typeof peopleContextRaw === 'string' && peopleContextRaw.trim()
           ? peopleContextRaw.slice(0, 2000)
           : undefined,
-      model: chatModel(),
+      model,
     });
     return NextResponse.json({ diary });
   } catch (err: unknown) {
