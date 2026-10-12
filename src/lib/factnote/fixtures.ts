@@ -77,6 +77,7 @@ export function buildMockAnalysis(overrides?: Partial<IncidentAnalysis>): Incide
         ...item('ui1', '受け取りを了承した時点でリマインダーを設定せず、約束を果たさなかった', 'high', []),
         severity: 'moderate',
         basis: 'verified',
+        suggestion: '頼まれたその場でスマホのリマインダーに登録し、「登録したよ」と一言返す',
       },
     ],
     otherPartyProblemPoints: [
@@ -84,6 +85,7 @@ export function buildMockAnalysis(overrides?: Partial<IncidentAnalysis>): Incide
         ...item('op1', '一件のミスを「いつも」「全部」と一般化して表現した', 'high', ['ev1']),
         severity: 'minor',
         basis: 'verified',
+        suggestion: '「いつも」ではなく「今日の受け取りを忘れたのは困った。次は気をつけてほしい」と、今回の件に限定して伝える',
       },
     ],
 
@@ -445,13 +447,27 @@ export function buildMockMemoDraft(): { title: string; body: string } {
 export function buildMockOverallReviewPayload() {
   return {
     userRecurringIssues: [
-      { text: '口頭で引き受けた予定や依頼を、記録や通知に残さずに忘れる', severity: 'moderate' as const, count: 2, refs: [1] },
+      {
+        text: '口頭で引き受けた予定や依頼を、記録や通知に残さずに忘れる',
+        suggestion: '頼まれたその場でスマホのリマインダーに入れ、「入れたよ」と一言返す',
+        severity: 'moderate' as const,
+        count: 2,
+        refs: [1],
+      },
     ],
     otherRecurringIssues: [
-      { text: '一件のミスを「いつも」「全部」と広げて表現する', severity: 'minor' as const, count: 2, refs: [1] },
+      {
+        text: '一件のミスを「いつも」「全部」と広げて表現する',
+        suggestion: '「いつも」ではなく「今日の受け取りを忘れたのは困った」と、その日の件に限定して伝える',
+        severity: 'minor' as const,
+        count: 2,
+        refs: [1],
+      },
     ],
     strengths: ['ミスをその場で認めて謝る場面が記録されている', '記念日や外食など、家族で楽しく過ごせた日がある'],
     conflictTriggers: ['約束・依頼の忘れ', '疲れている時間帯の会話'],
+    interactionCycle:
+      'あなたが依頼を忘れる → 相手が「いつも」と過去までまとめて責める → あなたが「いつもではない」と反論し、話が今回の件から離れていく。忘れた直後に、あなたが言い訳より先に謝って再発防止策まで伝えると、この流れを最初で止められます。',
     childImpact: '',
     safetyConcerns: '',
     responsibilityReason:

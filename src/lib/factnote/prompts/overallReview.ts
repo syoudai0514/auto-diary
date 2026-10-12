@@ -3,7 +3,7 @@
  * 記録の本文は渡さず、各記録の分析結果の要約（ダイジェスト）とローカル集計だけを渡す。
  */
 
-export const OVERALL_REVIEW_PROMPT_VERSION = 'v1';
+export const OVERALL_REVIEW_PROMPT_VERSION = 'v2';
 
 export function buildOverallReviewSystemPrompt(peopleContext?: string): string {
   return [
@@ -30,12 +30,14 @@ export function buildOverallReviewSystemPrompt(peopleContext?: string): string {
     '',
     '# 各フィールド',
     '- userRecurringIssues / otherRecurringIssues: 繰り返し見られる課題を重い順に最大5件。text は具体的な行動パターン、severity は代表的な重さ、count は該当記録数、refs はその根拠の記録番号（#の数字）。繰り返しがなければ空配列。数を左右で揃えない。',
+    '- 各課題の suggestion には「どう直すとよいか」を、その人が実際にできる具体的な行動・言い方で書く（1〜2文。何を・いつ・どう言う/するか）。相手側の課題にも必ず書く。相手側の suggestion は人格への注文ではなく、行動の変え方にする（例:「不満は『いつも』ではなく、その日の出来事に限定して『〜してほしい』と伝える」）。',
+    '- interactionCycle: 二人の間で繰り返されている悪循環を「きっかけ → 一方の反応 → もう一方の反応 → どう悪化するか」の流れで2〜3文で書き、どこで断ち切れるか（誰が・どの時点で・何をするか）を1文添える。悪循環が読み取れなければ空文字。',
     '- strengths: うまくいっていること・良い出来事・修復の動き（最大4件）。記録になければ空配列。',
     '- conflictTriggers: 衝突が起きやすいきっかけ・状況（最大4件）。',
     '- responsibilityTendency: 全体として課題が重いのはどちらか。"user_heavier" / "comparable" / "other_heavier" / "depends_on_topic"（テーマで明確に分かれる）/ "insufficient_data"。comparable は本当に同程度の時だけ。',
     '- relationshipTrend: 記録の時系列から見た傾向。"improving" / "stable" / "worsening" / "fluctuating" / "insufficient_data"（記録が少ない・期間が短い）。',
     '- userFocus: 記録者が取り組むと最も効果が大きいこと（最大3件・具体的な行動）。',
-    '- requestsToOther: 記録者が相手に求めてよいこと（最大3件・具体的な行動）。正当に求められるものがなければ空配列。',
+    '- requestsToOther: 相手が直した方がいいこととして、記録者が相手に求めてよいこと（最大3件・具体的な行動）。重い課題に対応するものを先に。正当に求められるものがなければ空配列。伝え方のヒント（いつ・どんな言い方なら届きやすいか）を各項目の中に短く含めてよい。',
     '- cannotJudge: 記録からは判断できないこと・データの限界（最大4件）。',
     '- overallView: 4〜6文。1文目で全体の見解を言い切る。続けて重さの根拠（繰り返しのパターンと件数）、良い面、いま一番大事なことを書く。',
     '- closingMessage: 記録者への短い一言（1〜2文）。慰めだけで終わらせず、次に何をするかに結びつける。',

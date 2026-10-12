@@ -22,10 +22,22 @@ function makePayload(): IncidentAnalysisPayload {
     aiInferences: [{ text: '推測1', confidence: 'low' }],
     unknowns: [{ text: '不明1', confidence: 'low' }],
     userImprovementPoints: [
-      { text: 'リマインダーを設定しなかった', confidence: 'high', severity: 'moderate', basis: 'verified' },
+      {
+        text: 'リマインダーを設定しなかった',
+        confidence: 'high',
+        severity: 'moderate',
+        basis: 'verified',
+        suggestion: '頼まれたその場でリマインダーに登録する',
+      },
     ],
     otherPartyProblemPoints: [
-      { text: '一般化表現を使った', confidence: 'high', severity: 'minor', basis: 'verified' },
+      {
+        text: '一般化表現を使った',
+        confidence: 'high',
+        severity: 'minor',
+        basis: 'verified',
+        suggestion: '今回の件に限定して「〜してほしい」と伝える',
+      },
     ],
     balancedConclusion: '結論。',
     nextActions: ['対応1', '対応2', '対応3', '対応4'],
@@ -103,6 +115,9 @@ describe('分析ペイロードの検証と組み立て', () => {
     expect(analysis.userImprovementPoints[0].severity).toBe('moderate');
     expect(analysis.otherPartyProblemPoints[0].basis).toBe('verified');
     expect(analysis.detectedPatterns[0].actor).toBe('other');
+    // 相手側にも「直した方がいいこと」が具体的に付く
+    expect(analysis.otherPartyProblemPoints[0].suggestion).toContain('今回の件に限定');
+    expect(analysis.userImprovementPoints[0].suggestion).toContain('リマインダー');
     // 問題なしの論点には重さを付けない
     expect(analysis.responsibilityBreakdown[0].severity).toBe('moderate');
     expect(analysis.responsibilityBreakdown[1].severity).toBeUndefined();
@@ -119,6 +134,17 @@ describe('分析ペイロードの検証と組み立て', () => {
     const bad = makePayload() as unknown as { verdict: { leaning: string } };
     bad.verdict.leaning = 'fifty_fifty';
     expect(IncidentAnalysisPayloadSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('直し方（suggestion）が欠けても分析全体は捨てない', () => {
+    const p = makePayload() as unknown as { otherPartyProblemPoints: Array<Record<string, unknown>> };
+    delete p.otherPartyProblemPoints[0].suggestion;
+    const parsed = IncidentAnalysisPayloadSchema.safeParse(p);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const { analysis } = toIncidentAnalysisResult(parsed.data, { aiModel: 'm' });
+      expect(analysis.otherPartyProblemPoints[0].suggestion).toBeUndefined();
+    }
   });
 
   it('重さ・根拠の種類が想定外の値でも分析全体は捨てず、既定値に寄せる', () => {
@@ -269,6 +295,8 @@ describe('判定の生成順とプロンプト', () => {
     expect(sys).toContain('重さの物差し');
     expect(sys).toContain('立場をそっくり入れ替えても');
     expect(sys).toContain('原因（発端）と反応を分けて評価する');
+    expect(sys).toContain('代わりにどうするとよかったか');
+    expect(sys).toContain('相手側の suggestion も');
     const user = buildIncidentAnalysisUserPrompt('本文', { sourceType: '録音の文字起こし' });
     expect(user).toContain('# 記録の形式');
     expect(user).toContain('録音の文字起こし');

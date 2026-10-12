@@ -211,9 +211,31 @@ describe('AI総評の後処理', () => {
       now: NOW,
     });
     expect(review.userRecurringIssues[0].recordIds).toEqual(['rec-a', 'rec-b']);
+    expect(review.otherRecurringIssues[0].suggestion).toContain('その日の件に限定');
+    expect(review.interactionCycle).toContain('止められます');
     expect(review.userFocus).toEqual(['a', 'b', 'c']);
     expect(review.fingerprint).toBe('fp');
     expect(review.generatedAt).toBe(NOW.toISOString());
+  });
+
+  it('直し方・悪循環が欠けた応答（旧形式）でも受け入れる', () => {
+    const raw = buildMockOverallReviewPayload() as Record<string, unknown>;
+    delete raw.interactionCycle;
+    (raw.otherRecurringIssues as Array<Record<string, unknown>>).forEach((i) => delete i.suggestion);
+    const parsed = OverallReviewPayloadSchema.safeParse(raw);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      const review = resolveOverallReview(parsed.data, {
+        refs: ['a'],
+        aiModel: 'm',
+        promptVersion: 'v2',
+        fingerprint: 'f',
+        includedCount: 1,
+        outdatedCount: 0,
+      });
+      expect(review.interactionCycle).toBeUndefined();
+      expect(review.otherRecurringIssues[0].suggestion).toBeUndefined();
+    }
   });
 
   it('傾向の値が想定外でも「判断材料が不足」に寄せて全体は受け入れる', () => {

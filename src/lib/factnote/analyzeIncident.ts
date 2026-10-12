@@ -30,6 +30,8 @@ const WireItemSchema = z.object({
 const WireIssueSchema = WireItemSchema.extend({
   severity: SEVERITY,
   basis: BASIS,
+  // 直し方が欠けても分析全体は捨てない
+  suggestion: z.string().catch(''),
 });
 
 export const VerdictSchema = z.object({
@@ -135,10 +137,14 @@ const ISSUE_ITEMS = {
       text: { type: Type.STRING, description: '人格ではなく具体的な発言・行動' },
       severity: { type: Type.STRING, description: SEVERITY_DESC },
       basis: { type: Type.STRING, description: BASIS_DESC },
+      suggestion: {
+        type: Type.STRING,
+        description: '代わりにどうするとよかったか。その人が次から実際にできる具体的な行動・言い方（1〜2文）',
+      },
       confidence: { type: Type.STRING, description: CONFIDENCE_DESC },
     },
-    required: ['text', 'severity', 'basis', 'confidence'],
-    propertyOrdering: ['text', 'severity', 'basis', 'confidence'],
+    required: ['text', 'severity', 'basis', 'suggestion', 'confidence'],
+    propertyOrdering: ['text', 'severity', 'basis', 'suggestion', 'confidence'],
   },
 };
 
@@ -210,7 +216,7 @@ export const INCIDENT_RESPONSE_SCHEMA = {
     },
     otherPartyProblemPoints: {
       ...ISSUE_ITEMS,
-      description: '相手側の問題点（重い順）。問題がなければ空配列。数を記録者側と揃えない',
+      description: '相手側の問題点と直した方がいいこと（重い順）。問題がなければ空配列。数を記録者側と揃えない',
     },
     detectedPatterns: {
       type: Type.ARRAY,
@@ -461,6 +467,7 @@ export function toIncidentAnalysisResult(
       confidence: 'high' | 'medium' | 'low';
       severity: Severity;
       basis: EvidenceBasis;
+      suggestion: string;
     }>,
   ) =>
     list.map((it) => ({
@@ -470,6 +477,7 @@ export function toIncidentAnalysisResult(
       evidenceIds: [],
       severity: it.severity,
       basis: it.basis,
+      suggestion: it.suggestion.trim() || undefined,
     }));
 
   const analysis: IncidentAnalysis = {

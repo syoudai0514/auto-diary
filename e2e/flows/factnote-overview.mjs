@@ -41,7 +41,7 @@ function analyzeResult(n) {
       repairActions: [],
       safetyFlags: [],
       aiModel: 'e2e-mock',
-      promptVersion: 'v3',
+      promptVersion: 'v4',
       generatedAt: '2026-10-01T00:00:00.000Z',
     },
     title: 'サンプル',
@@ -52,10 +52,21 @@ function analyzeResult(n) {
 }
 
 const overallReview = {
-  userRecurringIssues: [{ text: '引き受けた依頼を忘れる', severity: 'moderate', count: 2, refs: [1] }],
-  otherRecurringIssues: [{ text: '存在を否定する強い言葉を使う', severity: 'serious', count: 3, refs: [2] }],
+  userRecurringIssues: [
+    { text: '引き受けた依頼を忘れる', suggestion: 'その場でリマインダーに登録する', severity: 'moderate', count: 2, refs: [1] },
+  ],
+  otherRecurringIssues: [
+    {
+      text: '存在を否定する強い言葉を使う',
+      suggestion: '怒りが強い時は「今は話せない、30分後に話したい」と言って一度離れる',
+      severity: 'serious',
+      count: 3,
+      refs: [2],
+    },
+  ],
   strengths: ['家族で外食を楽しめた日がある'],
   conflictTriggers: ['疲れている夜'],
+  interactionCycle: '依頼を忘れる → 強い言葉で責める → 黙り込む、の流れが繰り返されています。強い言葉が出た時点で話し合いを中断すると断ち切れます。',
   childImpact: '',
   safetyConcerns: '',
   responsibilityReason: '相手側の重大な言動が繰り返し記録されている。',
@@ -136,7 +147,7 @@ export async function run({ base, invite, newPage }) {
   // --- AIによる全体の見解 ---
   await page.click('button:has-text("全体の見解を作成する")');
   await page.waitForSelector('text=相手側の課題が重い傾向', { timeout: 15000 });
-  for (const text of ['自分側の繰り返しの課題', '相手側の繰り返しの課題', 'うまくいっていること', 'あなたが取り組むと効果が大きいこと', '相手に求めてよいこと', '記録からは判断できないこと']) {
+  for (const text of ['自分側の繰り返しの課題', '相手側の繰り返しの課題', 'うまくいっていること', 'あなたが取り組むと効果が大きいこと', '相手が直した方がいいこと', '記録からは判断できないこと', '二人の間で繰り返されている流れ', '相手がこう直すとよい', '30分後に話したい']) {
     if ((await page.locator(`text=${text}`).count()) === 0) throw new Error(`FAIL: review section missing: ${text}`);
   }
   if (!overallBody || typeof overallBody.digest !== 'string' || !overallBody.digest.includes('#1')) {
