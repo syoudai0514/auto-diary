@@ -70,6 +70,20 @@
   - **設定UI**: `LockSettings`（設定画面の先頭）でPIN設定・変更（現PIN確認付き）、生体認証の登録/解除、自動ロック時間、ロック解除（現PIN確認付き）。「これは目隠しでデータ自体は暗号化されない／PINを忘れると解除不可」の注記あり。
   - `lock.test.ts`（PIN照合・非平文保存・ソルト差分・remove・オートロック値）+ E2E `factnote-lock.mjs`（PIN登録→リロードでロック→誤PIN拒否→正PIN解除）追加。
 
+- **判定ロジック v3 と「全体の見解」（フィードバック「バランスだけ取っている」対応）**:
+  - **診断（v2 までの問題）**:
+    1. Gemini は `propertyOrdering` を指定しないとプロパティを**アルファベット順**に生成するため、`balancedConclusion`・`conciseView` が改善点・問題点より先に書かれ、結論が分析に先行して両論併記に寄っていた
+    2. スキーマが自分側/相手側の改善点・問題点・返信案（境界線を含む3種）を常に要求し、「両側に何か書く」構造になっていた。重さの区別がなく、苛立ちの一言と発端のミスが同じ1件として並んでいた
+    3. 判定（どちらが重いか）を出すフィールドがなく、「中立的」「バランスの取れた結論」という語が真ん中への収束を誘導していた
+    4. 記録の形式（録音か本人の文章か）をAIに伝えておらず、根拠の強さを判定に反映できなかった
+    5. ローカル集計が detectedPatterns を**種類だけで**側に振り分けており、記録者自身の一般化表現も「相手側」に数えていた
+    6. フラットチェックのプロンプトが「極端な結論を防ぐ」＝真ん中へ寄せる設計だった
+  - **対応**: `prompts/incidentAnalysis.ts` v3（公正≠真ん中 / 件数でなく重さ / 共通の重さの物差し / 発端と反応の分離 / 記録者バイアスと basis / 立場入れ替えチェック / 判定の逃げ道禁止 / firm は moderate 以上の時だけ）。`analyzeIncident.ts` に `verdict`（leaning 8種・headline・reasoning・robustness・whatWouldChange・roleReversalCheck）、改善点・問題点・論点の `severity`/`basis`、パターンの `actor`、`INCIDENT_PROPERTY_ORDER`（事実→論点→各側→判定→見解・結論→対応）、温度0.2。`describeSourceType` で記録の形式を送信。`applyAnalysisResult` が直前の分析を `previousAnalysis` に1世代保持。aggregate は `patternActor`（actor 優先・旧データは種類で推定）。フラットチェック v2・カルテ講評 v2（重さ・判定の内訳を送る）。旧基準のフラットチェック結果はキャッシュ再利用しない
+  - **UI**: `Verdict.tsx`（判定カード: 5段階スケール・確かさ・立場入れ替え/変わりうる条件の折りたたみ。色は自分側=テラコッタ `--c-side-user` / 相手側=青灰 `--c-side-other`）。`AnalysisView` を判定→見解→各側（重さ・根拠バッジ、問題なしは明示）→論点カード→論点ごとの結論→対応→事実4層→返信案（空は非表示）の順に。旧基準の分析には説明と「最新の基準で分析し直す」。再分析時は判定の変化を表示
+  - **一括再分析**（`jobs.ts` `startBulkReanalysis`）: 古い順に直列、1件ごとに保存、429は最大6回待って再試行、1件の失敗は継続・APIキー未設定/認証切れ/3連続失敗で中断、途中停止、Screen Wake Lock。対象選びは `overview.ts` `reanalysisTargets`（旧基準+未分析 / 全件）。再実行すれば残りから再開
+  - **全体の見解**（`/factnote/overview`、分析ハブの先頭カード）: ①判定基準の状態と一括再分析 ②記録全体のかたち（ローカル: 判定の内訳バー・重さの内訳・月ごとの推移・繰り返しパターン・偏り警告）③AI総評（`/api/factnote/overall-review`、プロンプト `overallReview.ts` v1。送るのは各記録の分析要約+集計のみで本文は送らない。最大120件。#番号→記録リンク。meta に最新+1つ前を保存、記録が変わると「更新する」）
+  - テスト: `overview.test.ts` / `bulkReanalysis.test.ts` 追加、`analyzeIncident.test.ts`（生成順・判定・重さ・プロンプト内容）拡充。E2E `factnote-overview.mjs` 追加、`factnote.mjs` を v3 に更新
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -81,6 +95,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - 長期分析3機能の追加完了時点: typecheck ✅ / test **349件** ✅ / lint ✅ / build ✅ / **test:e2e 全6フロー PASS（既存4フロー + factnote + factnote-longterm）** ✅
 - 画面ロック（PIN + 生体認証）追加完了時点: typecheck ✅ / test **372件** ✅ / lint ✅ / build ✅ / **test:e2e 全7フロー PASS（+ factnote-lock）** ✅
 - 分析の安全フィルタ誤ブロック修正（BLOCK_NONEへ再緩和＋診断ログ強化）完了時点: typecheck ✅ / test **377件** ✅ / lint ✅ / build ✅ / test:e2e 全7フロー PASS ✅
+- 判定ロジック v3 + 全体の見解 完了時点: typecheck ✅ / test **401件** ✅ / lint ✅ / build ✅ / **test:e2e 全8フロー PASS（+ factnote-overview）** ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 
@@ -110,6 +125,9 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 2. 未来メモの「返信文コピー前の表示」（§18.3）
 
 ## 既知の問題・保留事項
+
+- 判定 v3 は実モデル（gemini-3.1-flash-lite）での出力品質を本番データで要確認。判定が片寄りすぎ/寄らなすぎる場合は `prompts/incidentAnalysis.ts` の重さの物差しを調整し、`INCIDENT_ANALYSIS_PROMPT_VERSION` を上げる（上げると「全体の見解」で旧基準として再分析対象になる）
+- 一括再分析はタブが生きている間だけ動く（画面ロック・アプリ切替で中断しうる。完了分は保存済みで、再実行で残りから再開）
 
 - 記録詳細の添付音声は再生UI未実装（Blobは attachments ストアに保存済み。`URL.createObjectURL` で再生ボタンを付けるだけ）
 - 週次・月次・パターン横断ビューは未着手（P1/P2）

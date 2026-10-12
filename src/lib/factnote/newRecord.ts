@@ -137,6 +137,27 @@ export function createEmptyRecord(sourceType: RecordSource, now: Date = new Date
   };
 }
 
+/**
+ * 記録の形式をAIへ伝える説明文。根拠の種類（記録で確認できるか、記録者の記憶か）の
+ * 判断に使う。録音なら双方の発言が残っているが、文章なら相手の発言は記録者の記憶になる。
+ */
+export function describeSourceType(record: Pick<IncidentRecord, 'sourceType' | 'correctedTranscript' | 'transcript'>): string {
+  switch (record.sourceType) {
+    case 'voice_recording':
+    case 'audio_file':
+      return record.transcript || record.correctedTranscript
+        ? '録音の文字起こし（双方の発言がそのまま残っている。話者ラベルの誤りはありうる）'
+        : '記録者が書いた文章（相手の発言・意図は記録者の記憶に基づく）';
+    case 'screenshot':
+      return 'スクリーンショットから読み取った文面（文面自体は確認できる）';
+    case 'quick_memo':
+      return '記録者が書いた短いメモ（相手の発言・意図は記録者の記憶に基づく）';
+    case 'text':
+    default:
+      return '記録者が書いた文章（相手の発言・意図は記録者の記憶に基づく）';
+  }
+}
+
 /** 分析対象のテキスト（修正済み文字起こし > 文字起こし > 原文の優先順）。 */
 export function sourceTextOf(record: IncidentRecord): string {
   return (record.correctedTranscript ?? record.transcript ?? record.rawText ?? '').trim();
@@ -165,6 +186,8 @@ export function applyAnalysisResult(
     ...record,
     title: record.title || result.title,
     analysis,
+    // 再分析では直前の分析を1世代だけ残し、判定の変化を比較できるようにする
+    previousAnalysis: record.analysis ?? record.previousAnalysis,
     status: 'ready',
     aiModel: result.analysis.aiModel,
     promptVersion: result.analysis.promptVersion,

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRightIcon, HeartIcon, ScaleIcon, UsersIcon } from '@/components/icons';
+import { ChevronRightIcon, FileTextIcon, HeartIcon, ScaleIcon, UsersIcon } from '@/components/icons';
 import { FactnoteHeader } from '@/components/screens/factnote/common';
 import { FactnoteTabBar } from '@/components/screens/factnote/TabBar';
 import { listRecords } from '@/lib/factnote/db';
+import { analysisStatus } from '@/lib/factnote/overview';
 import type { IncidentRecord } from '@/lib/factnote/types';
 
 /**
@@ -22,6 +23,7 @@ export default function FactnoteInsightsPage() {
   }, []);
 
   const latest = records[0];
+  const outdated = records.filter((r) => analysisStatus(r) === 'outdated').length;
 
   return (
     <div className="flex min-h-dvh flex-col pt-safe">
@@ -32,6 +34,18 @@ export default function FactnoteInsightsPage() {
         </p>
 
         <div className="mt-5 space-y-3">
+          <HubCard
+            href="/factnote/overview"
+            icon={<FileTextIcon width={22} height={22} />}
+            title="全体の見解"
+            description={
+              outdated > 0
+                ? `すべての記録を通した判定と総評。旧基準の分析が${outdated}件あります — まとめて再分析できます`
+                : 'すべての記録を通して、どちらの課題が重いか・何が繰り返されているかを見る'
+            }
+            disabled={records.length === 0}
+            highlight={outdated > 0}
+          />
           <HubCard
             href="/factnote/carte"
             icon={<UsersIcon width={22} height={22} />}
@@ -74,12 +88,14 @@ function HubCard({
   title,
   description,
   disabled,
+  highlight,
 }: {
   href?: string;
   icon: React.ReactNode;
   title: string;
   description: string;
   disabled: boolean;
+  highlight?: boolean;
 }) {
   const inner = (
     <>
@@ -105,7 +121,9 @@ function HubCard({
   return (
     <Link
       href={href}
-      className="flex min-h-[72px] items-center gap-3 rounded-card border border-border bg-surface px-4 py-3 active:opacity-70"
+      className={`flex min-h-[72px] items-center gap-3 rounded-card border bg-surface px-4 py-3 active:opacity-70 ${
+        highlight ? 'border-accent' : 'border-border'
+      }`}
     >
       {inner}
     </Link>

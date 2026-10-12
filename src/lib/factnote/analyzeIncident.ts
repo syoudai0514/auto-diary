@@ -8,7 +8,7 @@ import {
   INCIDENT_ANALYSIS_PROMPT_VERSION,
   type IncidentContext,
 } from './prompts/incidentAnalysis';
-import type { IncidentAnalysis } from './types';
+import type { EvidenceBasis, IncidentAnalysis, Severity } from './types';
 
 /**
  * 出来事の構造化分析（依頼書 §11 の 4〜12 を1回のGemini呼び出しで生成）。
@@ -16,29 +16,50 @@ import type { IncidentAnalysis } from './types';
  */
 
 const CONFIDENCE = z.enum(['high', 'medium', 'low']);
+// 補助的なメタ情報は、想定外の値でも分析全体を捨てずに既定値へ寄せる
+const SEVERITY = z.enum(['minor', 'moderate', 'serious']).catch('moderate');
+const BASIS = z.enum(['verified', 'user_claim', 'inference']).catch('user_claim');
+const ACTOR = z.enum(['user', 'other', 'both', 'unclear']).catch('unclear');
 
 const WireItemSchema = z.object({
   text: z.string(),
   confidence: CONFIDENCE,
 });
 
+/** 改善点・問題点（重さと根拠の種類付き）。 */
+const WireIssueSchema = WireItemSchema.extend({
+  severity: SEVERITY,
+  basis: BASIS,
+});
+
+export const VerdictSchema = z.object({
+  reasoning: z.string(),
+  roleReversalCheck: z.string(),
+  leaning: z.enum([
+    'user_mainly',
+    'user_more',
+    'comparable',
+    'other_more',
+    'other_mainly',
+    'no_fault',
+    'not_applicable',
+    'undeterminable',
+  ]),
+  robustness: z.enum(['firm', 'tentative', 'fragile']).catch('tentative'),
+  whatWouldChange: z.string(),
+  headline: z.string(),
+});
+
 /** Gemini が返す生の分析ペイロード（ID・メタ情報はサーバー側で付与する）。 */
 export const IncidentAnalysisPayloadSchema = z.object({
   title: z.string(),
-  conciseView: z.string(),
+  isConflict: z.boolean(),
+  isPositiveEvent: z.boolean(),
+  isRepairAction: z.boolean(),
   verifiedFacts: z.array(WireItemSchema),
   userClaims: z.array(WireItemSchema),
   aiInferences: z.array(WireItemSchema),
   unknowns: z.array(WireItemSchema),
-  userImprovementPoints: z.array(WireItemSchema),
-  otherPartyProblemPoints: z.array(WireItemSchema),
-  balancedConclusion: z.string(),
-  nextActions: z.array(z.string()),
-  replySuggestions: z.object({
-    gentle: z.string(),
-    standard: z.string(),
-    firm: z.string(),
-  }),
   responsibilityBreakdown: z.array(
     z.object({
       topic: z.string(),
@@ -53,11 +74,16 @@ export const IncidentAnalysisPayloadSchema = z.object({
         'insufficient_evidence',
         'contextual_factor',
       ]),
+      severity: SEVERITY,
+      basis: BASIS,
     }),
   ),
+  userImprovementPoints: z.array(WireIssueSchema),
+  otherPartyProblemPoints: z.array(WireIssueSchema),
   detectedPatterns: z.array(
     z.object({
       type: z.string(),
+      actor: ACTOR,
       label: z.string(),
       description: z.string(),
       confidence: CONFIDENCE,
@@ -72,67 +98,119 @@ export const IncidentAnalysisPayloadSchema = z.object({
       description: z.string(),
     }),
   ),
-  isPositiveEvent: z.boolean(),
-  isConflict: z.boolean(),
-  isRepairAction: z.boolean(),
+  verdict: VerdictSchema,
+  conciseView: z.string(),
+  balancedConclusion: z.string(),
+  nextActions: z.array(z.string()),
+  replySuggestions: z.object({
+    gentle: z.string(),
+    standard: z.string(),
+    firm: z.string(),
+  }),
 });
 
 export type IncidentAnalysisPayload = z.infer<typeof IncidentAnalysisPayloadSchema>;
+
+const CONFIDENCE_DESC = '"high" / "medium" / "low" のいずれか';
+const SEVERITY_DESC = '"minor"（軽微）/ "moderate"（中程度）/ "serious"（重大）のいずれか';
+const BASIS_DESC = '"verified"（記録で確認）/ "user_claim"（記録者の記憶・主張）/ "inference"（推測）のいずれか';
 
 const ITEM_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     text: { type: Type.STRING },
-    confidence: { type: Type.STRING, description: '"high" / "medium" / "low" のいずれか' },
+    confidence: { type: Type.STRING, description: CONFIDENCE_DESC },
   },
   required: ['text', 'confidence'],
-} as const;
+  propertyOrdering: ['text', 'confidence'],
+};
 
-const ITEMS = { type: Type.ARRAY, items: ITEM_SCHEMA } as const;
+const ITEMS = { type: Type.ARRAY, items: ITEM_SCHEMA };
+
+const ISSUE_ITEMS = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      text: { type: Type.STRING, description: '人格ではなく具体的な発言・行動' },
+      severity: { type: Type.STRING, description: SEVERITY_DESC },
+      basis: { type: Type.STRING, description: BASIS_DESC },
+      confidence: { type: Type.STRING, description: CONFIDENCE_DESC },
+    },
+    required: ['text', 'severity', 'basis', 'confidence'],
+    propertyOrdering: ['text', 'severity', 'basis', 'confidence'],
+  },
+};
+
+/**
+ * 生成順。Gemini は propertyOrdering を指定しないとプロパティを**アルファベット順**に
+ * 生成するため、v2 までは balancedConclusion / conciseView が改善点・問題点より先に
+ * 書かれ、結論が分析に先行して「両論併記」に寄りやすかった。
+ * v3 では「事実 → 論点と重さ → 各側の問題 → 判定 → 見解・結論 → 対応」の順に固定する。
+ */
+export const INCIDENT_PROPERTY_ORDER = [
+  'title',
+  'isConflict',
+  'isPositiveEvent',
+  'isRepairAction',
+  'verifiedFacts',
+  'userClaims',
+  'aiInferences',
+  'unknowns',
+  'responsibilityBreakdown',
+  'userImprovementPoints',
+  'otherPartyProblemPoints',
+  'detectedPatterns',
+  'positiveActions',
+  'repairActions',
+  'safetyFlags',
+  'verdict',
+  'conciseView',
+  'balancedConclusion',
+  'nextActions',
+  'replySuggestions',
+];
 
 /** Gemini の responseSchema（OpenAPI サブセット）。全プロパティ required。 */
 export const INCIDENT_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING, description: '出来事の短いタイトル（名詞句）' },
-    conciseView: { type: Type.STRING, description: '2〜4文の率直かつ中立的な最初の見解' },
+    isConflict: { type: Type.BOOLEAN },
+    isPositiveEvent: { type: Type.BOOLEAN },
+    isRepairAction: { type: Type.BOOLEAN },
     verifiedFacts: { ...ITEMS, description: '記録から直接確認できる事実のみ' },
-    userClaims: { ...ITEMS, description: 'ユーザーが記憶・主張しているが記録からは確認できない内容' },
+    userClaims: { ...ITEMS, description: '記録者が記憶・主張しているが記録からは確認できない内容' },
     aiInferences: { ...ITEMS, description: 'AIによる推測' },
     unknowns: { ...ITEMS, description: '現時点では判断できないこと' },
-    userImprovementPoints: { ...ITEMS, description: 'ユーザー側の改善点（人格でなく具体的行動）' },
-    otherPartyProblemPoints: { ...ITEMS, description: '相手側の問題点（人格でなく具体的な発言・行動）' },
-    balancedConclusion: { type: Type.STRING, description: '論点ごとに責任を分けたバランスの取れた結論' },
-    nextActions: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: '次回の具体的対応。最大3件',
-    },
-    replySuggestions: {
-      type: Type.OBJECT,
-      properties: {
-        gentle: { type: Type.STRING, description: 'やわらかい返信案' },
-        standard: { type: Type.STRING, description: '標準の返信案' },
-        firm: { type: Type.STRING, description: '境界線を明確にする返信案' },
-      },
-      required: ['gentle', 'standard', 'firm'],
-    },
     responsibilityBreakdown: {
       type: Type.ARRAY,
+      description: '論点ごとの整理（発端と反応は別の論点にする）。衝突でなければ空配列',
       items: {
         type: Type.OBJECT,
         properties: {
           topic: { type: Type.STRING, description: '論点' },
-          userSide: { type: Type.STRING, description: '自分側の評価。該当なしは空文字' },
+          userSide: { type: Type.STRING, description: '記録者側の評価。該当なしは空文字' },
           otherSide: { type: Type.STRING, description: '相手側の評価。該当なしは空文字' },
+          severity: { type: Type.STRING, description: `この論点の問題の重さ。${SEVERITY_DESC}` },
+          basis: { type: Type.STRING, description: BASIS_DESC },
           judgment: {
             type: Type.STRING,
             description:
               '"user_improvement" / "other_improvement" / "shared_improvement" / "no_problem" / "insufficient_evidence" / "contextual_factor" のいずれか',
           },
         },
-        required: ['topic', 'userSide', 'otherSide', 'judgment'],
+        required: ['topic', 'userSide', 'otherSide', 'severity', 'basis', 'judgment'],
+        propertyOrdering: ['topic', 'userSide', 'otherSide', 'severity', 'basis', 'judgment'],
       },
+    },
+    userImprovementPoints: {
+      ...ISSUE_ITEMS,
+      description: '記録者側の改善点（重い順）。問題がなければ空配列。数を相手側と揃えない',
+    },
+    otherPartyProblemPoints: {
+      ...ISSUE_ITEMS,
+      description: '相手側の問題点（重い順）。問題がなければ空配列。数を記録者側と揃えない',
     },
     detectedPatterns: {
       type: Type.ARRAY,
@@ -140,11 +218,13 @@ export const INCIDENT_RESPONSE_SCHEMA = {
         type: Type.OBJECT,
         properties: {
           type: { type: Type.STRING, description: 'パターン識別子（generalization 等）' },
+          actor: { type: Type.STRING, description: '"user"（記録者）/ "other"（相手）/ "both" / "unclear"' },
           label: { type: Type.STRING, description: '短い表示名' },
           description: { type: Type.STRING, description: '発言・行動としての説明（診断をしない）' },
-          confidence: { type: Type.STRING, description: '"high" / "medium" / "low"' },
+          confidence: { type: Type.STRING, description: CONFIDENCE_DESC },
         },
-        required: ['type', 'label', 'description', 'confidence'],
+        required: ['type', 'actor', 'label', 'description', 'confidence'],
+        propertyOrdering: ['type', 'actor', 'label', 'description', 'confidence'],
       },
     },
     positiveActions: { ...ITEMS, description: '良い出来事。該当なしは空配列' },
@@ -159,35 +239,52 @@ export const INCIDENT_RESPONSE_SCHEMA = {
           description: { type: Type.STRING },
         },
         required: ['type', 'severity', 'description'],
+        propertyOrdering: ['type', 'severity', 'description'],
       },
       description: '明確な危険の兆候がある場合のみ。なければ空配列',
     },
-    isPositiveEvent: { type: Type.BOOLEAN },
-    isConflict: { type: Type.BOOLEAN },
-    isRepairAction: { type: Type.BOOLEAN },
+    verdict: {
+      type: Type.OBJECT,
+      description: '論点の重さから導く全体の判定',
+      properties: {
+        reasoning: { type: Type.STRING, description: '件数ではなく重さの比較による理由' },
+        roleReversalCheck: { type: Type.STRING, description: '立場を入れ替えても同じ判定になるかの確認結果' },
+        leaning: {
+          type: Type.STRING,
+          description:
+            '"user_mainly" / "user_more" / "comparable" / "other_more" / "other_mainly" / "no_fault" / "not_applicable" / "undeterminable" のいずれか',
+        },
+        robustness: {
+          type: Type.STRING,
+          description: '"firm"（記録で裏付け）/ "tentative"（一部が記録者の記憶）/ "fragile"（未確認の主張が中心）',
+        },
+        whatWouldChange: { type: Type.STRING, description: 'どんな事実が分かれば判定が変わりうるか' },
+        headline: { type: Type.STRING, description: '判定を1文で率直に言い切る' },
+      },
+      required: ['reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
+      propertyOrdering: ['reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
+    },
+    conciseView: { type: Type.STRING, description: '判定と矛盾しない2〜4文の率直な見解。1文目で判定を言い切る' },
+    balancedConclusion: { type: Type.STRING, description: '論点ごとの結論。片寄っているなら片寄っていると明記する' },
+    nextActions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '次回の具体的対応。最大3件。重い問題への対応を先に',
+    },
+    replySuggestions: {
+      type: Type.OBJECT,
+      properties: {
+        gentle: { type: Type.STRING, description: 'やわらかい返信案（衝突でなければ空文字可）' },
+        standard: { type: Type.STRING, description: '標準の返信案（衝突でなければ空文字可）' },
+        firm: { type: Type.STRING, description: '相手に moderate 以上の言動がある時だけ。なければ空文字' },
+      },
+      required: ['gentle', 'standard', 'firm'],
+      propertyOrdering: ['gentle', 'standard', 'firm'],
+    },
   },
-  required: [
-    'title',
-    'conciseView',
-    'verifiedFacts',
-    'userClaims',
-    'aiInferences',
-    'unknowns',
-    'userImprovementPoints',
-    'otherPartyProblemPoints',
-    'balancedConclusion',
-    'nextActions',
-    'replySuggestions',
-    'responsibilityBreakdown',
-    'detectedPatterns',
-    'positiveActions',
-    'repairActions',
-    'safetyFlags',
-    'isPositiveEvent',
-    'isConflict',
-    'isRepairAction',
-  ],
-} as const;
+  required: INCIDENT_PROPERTY_ORDER,
+  propertyOrdering: INCIDENT_PROPERTY_ORDER,
+};
 
 /**
  * 分析の出力上限。セクションが多いため大きめに確保する。
@@ -300,8 +397,8 @@ export async function analyzeIncident(
       contents,
       config: {
         systemInstruction: system,
-        // 事実の捏造を避けるため温度は低め
-        temperature: 0.4,
+        // 事実の捏造を避け、一括再分析でも判定がぶれないよう温度は低め
+        temperature: 0.2,
         responseMimeType: 'application/json',
         responseSchema: INCIDENT_RESPONSE_SCHEMA,
         maxOutputTokens: INCIDENT_ANALYSIS_MAX_OUTPUT_TOKENS,
@@ -358,27 +455,63 @@ export function toIncidentAnalysisResult(
   const items = (list: Array<{ text: string; confidence: 'high' | 'medium' | 'low' }>) =>
     list.map((it) => ({ id: idGen(), text: it.text, confidence: it.confidence, evidenceIds: [] }));
 
+  const issues = (
+    list: Array<{
+      text: string;
+      confidence: 'high' | 'medium' | 'low';
+      severity: Severity;
+      basis: EvidenceBasis;
+    }>,
+  ) =>
+    list.map((it) => ({
+      id: idGen(),
+      text: it.text,
+      confidence: it.confidence,
+      evidenceIds: [],
+      severity: it.severity,
+      basis: it.basis,
+    }));
+
   const analysis: IncidentAnalysis = {
+    verdict: {
+      leaning: payload.verdict.leaning,
+      headline: payload.verdict.headline,
+      reasoning: payload.verdict.reasoning,
+      robustness: payload.verdict.robustness,
+      whatWouldChange: payload.verdict.whatWouldChange,
+      roleReversalCheck: payload.verdict.roleReversalCheck,
+    },
     conciseView: payload.conciseView,
     verifiedFacts: items(payload.verifiedFacts),
     userClaims: items(payload.userClaims),
     aiInferences: items(payload.aiInferences),
     unknowns: items(payload.unknowns),
-    userImprovementPoints: items(payload.userImprovementPoints),
-    otherPartyProblemPoints: items(payload.otherPartyProblemPoints),
+    userImprovementPoints: issues(payload.userImprovementPoints),
+    otherPartyProblemPoints: issues(payload.otherPartyProblemPoints),
     balancedConclusion: payload.balancedConclusion,
     nextActions: payload.nextActions.slice(0, 3),
-    replySuggestions: payload.replySuggestions,
+    replySuggestions: {
+      gentle: payload.replySuggestions.gentle.trim(),
+      standard: payload.replySuggestions.standard.trim(),
+      firm: payload.replySuggestions.firm.trim(),
+    },
     responsibilityBreakdown: payload.responsibilityBreakdown.map((row) => ({
       id: idGen(),
       topic: row.topic,
       userSide: row.userSide.trim() || undefined,
       otherSide: row.otherSide.trim() || undefined,
       judgment: row.judgment,
+      // 問題なし・判断材料不足の論点に重さは意味を持たないので落とす
+      severity:
+        row.judgment === 'no_problem' || row.judgment === 'insufficient_evidence'
+          ? undefined
+          : row.severity,
+      basis: row.basis,
     })),
     detectedPatterns: payload.detectedPatterns.map((p) => ({
       id: idGen(),
       type: p.type,
+      actor: p.actor,
       label: p.label,
       description: p.description,
       evidenceIds: [],

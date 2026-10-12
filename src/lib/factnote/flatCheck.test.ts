@@ -35,7 +35,7 @@ describe('フラットチェックの検証と組み立て', () => {
     expect(part.userImprovementPoints).toHaveLength(5);
     expect(part.userImprovementPoints[0].id).toBeTruthy();
     expect(part.aiModel).toBe('gemini-test');
-    expect(part.promptVersion).toBe('v1');
+    expect(part.promptVersion).toBe('v2');
   });
 
   it('pastStatsText は件数付きの集計テキストを作り、過去0件では空を返す', () => {

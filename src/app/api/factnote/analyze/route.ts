@@ -38,6 +38,7 @@ function sanitizeContext(raw: unknown): IncidentContext {
     people: strArray(body.people),
     childrenPresent: str(body.childrenPresent),
     emotions: strArray(body.emotions),
+    sourceType: str(body.sourceType),
   };
 }
 

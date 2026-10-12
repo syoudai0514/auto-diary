@@ -10,11 +10,21 @@ import {
   summaryFingerprint,
 } from '@/lib/factnote/aggregate';
 import { getMeta, getPerson, listRecords, profileSummaryCacheKey, setMeta } from '@/lib/factnote/db';
-import type { IncidentRecord, PersonProfile, ReviewPeriod } from '@/lib/factnote/types';
+import { buildOverviewStats, LEANING_SCALE } from '@/lib/factnote/overview';
+import {
+  VERDICT_LEANING_LABELS,
+  type IncidentRecord,
+  type PersonProfile,
+  type ReviewPeriod,
+} from '@/lib/factnote/types';
 import { ApiError } from '@/lib/api';
 
 /** AIへ送る集計テキスト（本文・実名は含めない）。 */
-function statsTextOf(summary: ReturnType<typeof buildProfileSummary>): string {
+function statsTextOf(
+  summary: ReturnType<typeof buildProfileSummary>,
+  targetRecords: IncidentRecord[],
+): string {
+  const ov = buildOverviewStats(targetRecords);
   const lines = [
     `対象期間: ${summary.period} / 記録 ${summary.totalRecords}件`,
     `衝突 ${summary.conflictCount}件 / 良い出来事 ${summary.positiveEventCount}件 / 修復行動 ${summary.repairActionCount}件`,
@@ -28,6 +38,14 @@ function statsTextOf(summary: ReturnType<typeof buildProfileSummary>): string {
   list('衝突の状況', summary.conflictPatterns.slice(0, 5));
   list('利用者側のパターン', summary.userPatterns);
   list('相手側のパターン', summary.otherPartyPatterns);
+  if (ov.judgedConflicts > 0) {
+    lines.push(
+      `衝突ごとの判定（最新基準 ${ov.judgedConflicts}件）: ${LEANING_SCALE.map((l) => `${VERDICT_LEANING_LABELS[l]} ${ov.leaningCounts[l]}`).join(' / ')}`,
+    );
+  }
+  const sev = (c: { serious: number; moderate: number; minor: number }) =>
+    `重大 ${c.serious} / 中程度 ${c.moderate} / 軽微 ${c.minor}`;
+  lines.push(`問題の重さ — 利用者側: ${sev(ov.severity.user)} ／ 相手側: ${sev(ov.severity.other)}`);
   if (summary.dataBiasWarnings.length > 0) {
     lines.push(`偏り警告: ${summary.dataBiasWarnings.join(' / ')}`);
   }
@@ -83,7 +101,7 @@ export default function CartePage() {
     if (!person || !summary) return;
     setAiSummary((s) => ({ ...s, loading: true, error: null }));
     try {
-      const { summary: text } = await factnoteProfileSummaryApi(statsTextOf(summary));
+      const { summary: text } = await factnoteProfileSummaryApi(statsTextOf(summary, targetRecords));
       const key = profileSummaryCacheKey(person.id, period, summaryFingerprint(targetRecords));
       await setMeta(key, text);
       setAiSummary({ text, loading: false, error: null, fromCache: false });

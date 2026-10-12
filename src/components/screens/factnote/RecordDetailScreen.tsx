@@ -339,8 +339,12 @@ function AnalysisTab({
   if (record.analysis) {
     return (
       <>
-        <AnalysisView analysis={record.analysis} />
-        {onAnalyze && (
+        <AnalysisView
+          analysis={record.analysis}
+          previousAnalysis={record.previousAnalysis}
+          onReanalyze={onAnalyze}
+        />
+        {onAnalyze && record.analysis.verdict && (
           <div className="mb-6 mt-2 text-center">
             <button
               onClick={onAnalyze}

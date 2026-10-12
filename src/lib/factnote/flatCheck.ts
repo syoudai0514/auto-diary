@@ -118,7 +118,7 @@ export async function runFlatCheck(
       contents,
       config: {
         systemInstruction: system,
-        temperature: 0.4,
+        temperature: 0.2,
         responseMimeType: 'application/json',
         responseSchema: FLAT_CHECK_RESPONSE_SCHEMA,
         maxOutputTokens: FLAT_CHECK_MAX_OUTPUT_TOKENS,
