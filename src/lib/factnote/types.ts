@@ -53,6 +53,12 @@ export interface IncidentRecord {
   analysis?: IncidentAnalysis;
   /** 再分析で置き換えられた直前の分析（判定の変化を比較するため1世代だけ保持）。 */
   previousAnalysis?: IncidentAnalysis;
+  /**
+   * AI側の制限（安全フィルタ等）で分析できなかった記録の印。本文（sourceTextOf）を
+   * 直すと textHash が変わり、自動的に再分析の対象へ戻る。一括再分析で同じ記録を
+   * 何度も送り続けないためのもの。
+   */
+  analysisBlocked?: { reason: string; textHash: string; at: string };
   diaryVersions: DiaryVersion[];
 
   status: RecordStatus;

@@ -96,6 +96,8 @@
 
 - **モデルを 3.5 flash-lite へ + 混雑時の自動切り替え**: 事実ノートの text 系ルート（analyze / diary / flat-check / overall-review / memo-draft / profile-summary）は `modelFallback.ts` の `factnoteModel()`（`FACTNOTE_GEMINI_MODEL` > `GEMINI_MODEL` > 既定 `gemini-3.5-flash-lite`）を使い、主モデルが 404/429/500/503/504 で失敗したら同じリクエストを予備（`FACTNOTE_GEMINI_FALLBACK_MODEL`、既定 `gemini-3.1-flash-lite`）で1回だけ試す（`withModelFallback`。無料枠の制限・高負荷はモデルごとに別枠のため）。記録の `aiModel` には実際に応答したモデルを残す。**既存の音声日記アプリは `GEMINI_MODEL`（既定 3.1）のまま**。未検証: 3.5 の出力品質・無料枠の実際の回数（公式ドキュメントに到達できず検索情報のみ）。出力がおかしければ Vercel の環境変数 `FACTNOTE_GEMINI_MODEL=gemini-3.1-flash-lite` で戻せる
 
+- **AI側の制限で分析できない記録の扱い**（本番で62/63件成功、残り1件が `PROHIBITED_CONTENT` で毎回ブロック）: `PROHIBITED_CONTENT` は Google 側で常時有効な制限で、safetySettings では解除できない。**回避（別モデルで試す等）はしない**。代わりに `IncidentRecord.analysisBlocked`（理由 + 本文ハッシュ）を付け、本文が同じ間は再分析の対象から外す（本文を直すとハッシュが変わり自動で対象に戻る）。一括再分析ではブロックを失敗・連続失敗に数えず次へ進み、「AI側の制限で分析できない記録」として別枠に一覧表示。記録詳細にも説明と「編集で本文を直す」案内。分析ルートは `reason` を返し、PROHIBITED_CONTENT 専用の文言を出す
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -111,6 +113,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - 直し方の提示（v4 / 総評 v2）完了時点: typecheck ✅ / test **403件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 - 一括再分析の503対策 完了時点: typecheck ✅ / test **410件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 - モデル切り替え 完了時点: typecheck ✅ / test **420件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
+- ブロック記録の扱い 完了時点: typecheck ✅ / test **424件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 

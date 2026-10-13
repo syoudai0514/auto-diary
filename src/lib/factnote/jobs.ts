@@ -11,7 +11,14 @@ import {
   type FactnoteAnalyzeResult,
 } from './api';
 import { getCachedTranscript, getRecord, listRecords, saveRecord, setCachedTranscript } from './db';
-import { applyAnalysisResult, describeSourceType, recordToContext, sourceTextOf } from './newRecord';
+import {
+  applyAnalysisResult,
+  describeSourceType,
+  isAnalysisBlocked,
+  recordToContext,
+  sourceTextOf,
+  textHash,
+} from './newRecord';
 import type { IncidentContext } from './prompts/incidentAnalysis';
 import type { IncidentRecord, VerdictLeaning } from './types';
 
@@ -277,8 +284,23 @@ async function runAnalyze(
     if (record) emit({ type: 'done', job, record, result });
     return record;
   } catch (err) {
+    // AI側の制限（安全フィルタ等）で分析できない記録には印を付ける。同じ本文を何度も送り続けず、
+    // 本文を直すと（ハッシュが変わると）自動的に再分析の対象へ戻る
+    const blocked = err instanceof ApiError && err.code === 'analysis_blocked';
     // 既存の分析がある記録は ready に戻す（再分析の失敗で分析済みの状態を失わない）
-    await persistRecord(opts.recordId, (r) => ({ ...r, status: r.analysis ? 'ready' : 'draft' }));
+    await persistRecord(opts.recordId, (r) => ({
+      ...r,
+      status: r.analysis ? 'ready' : 'draft',
+      ...(blocked
+        ? {
+            analysisBlocked: {
+              reason: (err as ApiError).message,
+              textHash: textHash(sourceTextOf(r)),
+              at: new Date().toISOString(),
+            },
+          }
+        : {}),
+    }));
     emit({ type: 'error', job, message: errorMessage(err, '分析に失敗しました。') });
     throw err;
   } finally {
@@ -305,8 +327,8 @@ export interface BulkReanalysisState {
   currentTitle?: string;
   /** 判定が付いた/変わった記録（新しい判定の記録全件。before が無いのは旧基準・未分析）。 */
   changes: BulkChange[];
-  /** 失敗した記録と理由（再実行で再度対象になる）。 */
-  failures: Array<{ recordId: string; title: string; reason: string }>;
+  /** 失敗した記録と理由。kind='blocked' はAI側の制限で分析できない記録（本文を直すまで対象外）。 */
+  failures: Array<{ recordId: string; title: string; reason: string; kind: 'error' | 'blocked' }>;
   /** 待機中の説明（Geminiが混んでいる間など）。 */
   notice?: string;
   /** 中断した理由（aborted のとき）。 */
@@ -400,7 +422,7 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
           return;
         }
         const record = await getRecord(recordId);
-        if (!record || jobs.has(recordId)) {
+        if (!record || jobs.has(recordId) || isAnalysisBlocked(record)) {
           bulkState = { ...bulkState!, done: bulkState!.done + 1 };
           emitBulk();
           continue;
@@ -450,13 +472,29 @@ export function startBulkReanalysis(opts: { recordIds: string[]; peopleContext?:
               : bulkState!.changes,
           };
         } catch (err) {
-          consecutiveFailures++;
           const reason = friendlyAiError(err) ?? '分析に失敗しました。';
+          if (err instanceof ApiError && err.code === 'analysis_blocked') {
+            // この記録固有の制限。他の記録には影響しないので、失敗の連続には数えず次へ進む
+            bulkState = {
+              ...bulkState!,
+              done: bulkState!.done + 1,
+              failures: [
+                ...bulkState!.failures,
+                { recordId, title: record.title || '無題の記録', reason, kind: 'blocked' },
+              ],
+            };
+            emitBulk();
+            continue;
+          }
+          consecutiveFailures++;
           bulkState = {
             ...bulkState!,
             done: bulkState!.done + 1,
             failed: bulkState!.failed + 1,
-            failures: [...bulkState!.failures, { recordId, title: record.title || '無題の記録', reason }],
+            failures: [
+              ...bulkState!.failures,
+              { recordId, title: record.title || '無題の記録', reason, kind: 'error' },
+            ],
           };
           if (isFatalForBulk(err) || consecutiveFailures >= 3) {
             bulkState = {

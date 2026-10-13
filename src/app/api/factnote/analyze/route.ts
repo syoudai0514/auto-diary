@@ -123,7 +123,10 @@ export async function POST(req: Request) {
         err.kind === 'truncated' || err.kind === 'blocked'
           ? err.message
           : '分析に失敗しました。しばらくしてから再試行してください。';
-      return NextResponse.json({ error: code, message }, { status: 502 });
+      return NextResponse.json(
+        { error: code, message, ...(err.kind === 'blocked' && err.reason ? { reason: err.reason } : {}) },
+        { status: 502 },
+      );
     }
     return aiErrorResponse(
       { tag: 'factnote-analyze', code: 'analysis_failed', messageBase: '分析に失敗しました' },

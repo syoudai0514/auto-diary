@@ -17,7 +17,7 @@ import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi } from '@/lib/factnote/api';
 import { getAttachmentBlob, newFactnoteId } from '@/lib/factnote/db';
 import { analysisSummaryForDiary } from '@/lib/factnote/generateFactnoteDiary';
-import { sourceTextOf } from '@/lib/factnote/newRecord';
+import { isAnalysisBlocked, sourceTextOf } from '@/lib/factnote/newRecord';
 import { loadFactnoteProfile, profileToPeopleContext } from '@/lib/factnote/profile';
 import { FACTNOTE_DIARY_PROMPT_VERSION } from '@/lib/factnote/prompts/diary';
 import {
@@ -339,6 +339,7 @@ function AnalysisTab({
   if (record.analysis) {
     return (
       <>
+        {isAnalysisBlocked(record) && <BlockedNotice record={record} className="mt-5" />}
         <AnalysisView
           analysis={record.analysis}
           previousAnalysis={record.previousAnalysis}
@@ -363,6 +364,7 @@ function AnalysisTab({
 
   return (
     <div className="mt-10 text-center">
+      {isAnalysisBlocked(record) && <BlockedNotice record={record} className="mx-auto mb-6 max-w-[320px]" />}
       <p className="text-[14px] text-text-tertiary">まだ分析していません。</p>
       {onAnalyze && (
         <>
@@ -377,6 +379,19 @@ function AnalysisTab({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** AI側の制限（安全フィルタ等）で分析できなかった記録の説明。 */
+function BlockedNotice({ record, className = '' }: { record: IncidentRecord; className?: string }) {
+  return (
+    <div className={`rounded-card bg-warning-soft px-4 py-4 text-left ${className}`}>
+      <p className="text-[13.5px] font-semibold text-warning">この記録は最新の基準で分析できませんでした</p>
+      <p className="mt-1.5 text-[12.5px] leading-[1.75] text-text">{record.analysisBlocked?.reason}</p>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-text-secondary">
+        右上の「編集」で本文を直すと、もう一度分析できます。
+      </p>
     </div>
   );
 }
