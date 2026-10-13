@@ -158,6 +158,21 @@ export function describeSourceType(record: Pick<IncidentRecord, 'sourceType' | '
   }
 }
 
+/** 本文の変更検知用の軽量ハッシュ（FNV-1a。キャッシュキー用途で十分）。 */
+export function textHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${text.length}_${hash.toString(16)}`;
+}
+
+/** AI側の制限で分析できなかった記録で、まだ本文が変わっていないか（変わっていれば再分析できる）。 */
+export function isAnalysisBlocked(record: IncidentRecord): boolean {
+  return !!record.analysisBlocked && record.analysisBlocked.textHash === textHash(sourceTextOf(record));
+}
+
 /** 分析対象のテキスト（修正済み文字起こし > 文字起こし > 原文の優先順）。 */
 export function sourceTextOf(record: IncidentRecord): string {
   return (record.correctedTranscript ?? record.transcript ?? record.rawText ?? '').trim();
@@ -186,6 +201,7 @@ export function applyAnalysisResult(
     ...record,
     title: record.title || result.title,
     analysis,
+    analysisBlocked: undefined,
     // 再分析では直前の分析を1世代だけ残し、判定の変化を比較できるようにする
     previousAnalysis: record.analysis ?? record.previousAnalysis,
     status: 'ready',

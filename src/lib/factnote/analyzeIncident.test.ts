@@ -212,6 +212,20 @@ describe('analyzeIncident', () => {
     ).rejects.toMatchObject({ kind: 'blocked' });
   });
 
+  it('PROHIBITED_CONTENT は設定で解除できない制限だと伝え、理由を保持し、再試行しない', async () => {
+    const ai = mockGemini([{ text: '', finishReason: 'PROHIBITED_CONTENT' }, { text: validPayload }]);
+    const err = await analyzeIncident(ai, { sourceText: 'text', context: {}, model: 'm', maxRetries: 1 }).catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(IncidentAnalysisError);
+    expect(err.kind).toBe('blocked');
+    expect(err.reason).toBe('PROHIBITED_CONTENT');
+    expect(err.message).toContain('Google側で常に有効な制限');
+    expect(
+      (ai.models.generateContent as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(1);
+  });
+
   it('MAX_TOKENSで途切れた場合は truncated エラーになる', async () => {
     const ai = mockGemini([{ text: '{"a":1', finishReason: 'MAX_TOKENS' }]);
     await expect(

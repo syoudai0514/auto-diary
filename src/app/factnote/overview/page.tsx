@@ -20,6 +20,7 @@ import {
 import { loadOverallReviews, saveOverallReview } from '@/lib/factnote/overallReviewStore';
 import {
   buildOverviewDigest,
+  blockedRecords,
   buildOverviewStats,
   estimateReanalysisMinutes,
   reanalysisTargets,
@@ -65,6 +66,7 @@ export default function FactnoteOverviewPage() {
 
   const stats = useMemo(() => buildOverviewStats(records ?? []), [records]);
   const recordsById = useMemo(() => new Map((records ?? []).map((r) => [r.id, r])), [records]);
+  const blocked = useMemo(() => blockedRecords(records ?? []), [records]);
   const outdatedTargets = useMemo(() => reanalysisTargets(records ?? [], 'outdated'), [records]);
   const allTargets = useMemo(() => reanalysisTargets(records ?? [], 'all'), [records]);
 
@@ -123,6 +125,7 @@ export default function FactnoteOverviewPage() {
           <>
             <ReanalysisCard
               stats={stats}
+              blocked={blocked}
               outdatedTargets={outdatedTargets.length}
               allTargets={allTargets.length}
               estimateMinutes={estimateReanalysisMinutes}

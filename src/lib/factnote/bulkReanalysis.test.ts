@@ -108,7 +108,7 @@ describe('一括再分析', () => {
     await saveRecord(rec('a', { analysis: old }));
     await saveRecord(rec('b'));
     analyzeMock
-      .mockRejectedValueOnce(new ApiError(502, 'analysis_blocked', 'ブロック'))
+      .mockRejectedValueOnce(new ApiError(500, 'analysis_failed', '分析に失敗しました'))
       .mockResolvedValueOnce(result('user_more'));
 
     const done = waitForFinish();
@@ -191,5 +191,36 @@ describe('一括再分析', () => {
     expect((await getRecord('a'))?.status).toBe('draft');
     // 中断で手つかずの記録はそのまま
     expect((await getRecord('d'))?.status).toBe('ready');
+  });
+
+  it('AI側の制限(ブロック)で分析できない記録は、失敗に数えず印を付けて次へ進み、再実行では送り直さない', async () => {
+    await saveRecord(rec('a', { title: 'ブロックされる記録' }));
+    await saveRecord(rec('b'));
+    analyzeMock.mockImplementation(async (sourceText: string) => {
+      if (sourceText === '本文a') throw new ApiError(502, 'analysis_blocked', 'Google側の制限で分析できませんでした。', undefined);
+      return result('user_more');
+    });
+
+    const done = waitForFinish();
+    startBulkReanalysis({ recordIds: ['a', 'b'] });
+    const state = await done;
+
+    // 失敗(failed)でも中断でもなく、後続の記録は通常どおり分析される
+    expect(state.status).toBe('done');
+    expect(state.failed).toBe(0);
+    expect(state.failures).toEqual([
+      expect.objectContaining({ recordId: 'a', kind: 'blocked', title: 'ブロックされる記録' }),
+    ]);
+    expect((await getRecord('b'))?.analysis?.verdict?.leaning).toBe('user_more');
+    const a = await getRecord('a');
+    expect(a?.analysisBlocked?.reason).toContain('Google側の制限');
+    expect(a?.status).toBe('draft');
+
+    // もう一度実行しても、本文が同じ記録は送り直さない
+    analyzeMock.mockClear();
+    const again = waitForFinish();
+    startBulkReanalysis({ recordIds: ['a'] });
+    await again;
+    expect(analyzeMock).not.toHaveBeenCalled();
   });
 });

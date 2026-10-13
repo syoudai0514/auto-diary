@@ -33,6 +33,7 @@ const ghostButton =
 
 export function ReanalysisCard({
   stats,
+  blocked,
   outdatedTargets,
   allTargets,
   estimateMinutes,
@@ -42,6 +43,8 @@ export function ReanalysisCard({
   onDismiss,
 }: {
   stats: OverviewStats;
+  /** AI側の制限で分析できず、本文を直すまで対象外の記録。 */
+  blocked: IncidentRecord[];
   outdatedTargets: number;
   allTargets: number;
   estimateMinutes: (count: number) => number;
@@ -79,8 +82,34 @@ export function ReanalysisCard({
       ) : (
         <p className="mt-3 flex items-center gap-1.5 text-[13px] text-success">
           <CheckIcon width={16} height={16} />
-          すべての記録が最新の基準で分析されています
+          {blocked.length > 0
+            ? '分析できる記録は、すべて最新の基準で分析されています'
+            : 'すべての記録が最新の基準で分析されています'}
         </p>
+      )}
+
+      {blocked.length > 0 && (
+        <details className="mt-3 rounded-chip bg-warning-soft px-3 py-2">
+          <summary className="min-h-[36px] cursor-pointer list-none text-[12.5px] font-semibold text-warning">
+            AI側の制限で分析できない記録 {blocked.length}件
+          </summary>
+          <p className="mt-1 text-[12px] leading-relaxed text-text">
+            Google側の制限（安全フィルタ等）で分析を受け付けてもらえなかった記録です。同じ内容を何度も送らないよう、再分析の対象から外しています。記録の本文を直すと、自動で再分析の対象に戻ります。
+          </p>
+          <ul className="mt-1 divide-y divide-border">
+            {blocked.slice(0, 10).map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/factnote/records/${r.id}`}
+                  className="flex min-h-[44px] items-center justify-between gap-2 text-[13px] active:opacity-60"
+                >
+                  <span className="truncate">{r.title || '無題の記録'}</span>
+                  <span className="shrink-0 text-[11.5px] text-text-secondary">記録を開く</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {!bulk && allTargets > 0 && (
@@ -155,24 +184,29 @@ function BulkResult({ bulk, onDismiss }: { bulk: BulkReanalysisState; onDismiss:
       : bulk.status === 'cancelled'
         ? '再分析を止めました'
         : '再分析を中断しました';
-  const succeeded = bulk.done - bulk.failed;
+  const blockedCount = bulk.failures.filter((f) => f.kind === 'blocked').length;
+  const succeeded = bulk.done - bulk.failed - blockedCount;
   return (
     <div className="mt-4">
       <p className={`text-[14px] font-semibold ${bulk.status === 'aborted' ? 'text-warning' : ''}`}>{title}</p>
       <p className="mt-1 text-[12.5px] text-text-secondary">
-        {succeeded}件を分析しました{bulk.failed > 0 ? `（失敗 ${bulk.failed}件）` : ''}
+        {succeeded}件を分析しました
+        {bulk.failed > 0 ? `（失敗 ${bulk.failed}件）` : ''}
+        {blockedCount > 0 ? `（AI側の制限で分析できず ${blockedCount}件）` : ''}
         {bulk.done < bulk.total ? ` · 残り ${bulk.total - bulk.done}件` : ''}
       </p>
       {bulk.message && <p className="mt-1 text-[12.5px] leading-relaxed text-warning">{bulk.message}</p>}
       {bulk.failures.length > 0 && (
         <details className="mt-2">
           <summary className="min-h-[36px] cursor-pointer list-none text-[12.5px] font-semibold text-warning">
-            失敗した記録 {bulk.failures.length}件を見る
+            分析できなかった記録 {bulk.failures.length}件を見る
           </summary>
           <ul className="mt-1 space-y-1.5">
             {bulk.failures.slice(0, 20).map((f) => (
               <li key={f.recordId} className="text-[12px] leading-relaxed">
-                <span className="font-medium">{f.title}</span>
+                <Link href={`/factnote/records/${f.recordId}`} className="font-medium underline active:opacity-60">
+                  {f.title}
+                </Link>
                 <span className="block text-text-tertiary">{f.reason}</span>
               </li>
             ))}

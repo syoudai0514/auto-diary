@@ -304,10 +304,13 @@ export class IncidentAnalysisError extends Error {
    * （再試行しても変わらない） / 'parse' = 原因不明でJSONとして解釈できなかった
    */
   readonly kind: 'truncated' | 'blocked' | 'parse';
-  constructor(message: string, kind: 'truncated' | 'blocked' | 'parse') {
+  /** ブロック理由（finishReason / blockReason。本文は含まない）。 */
+  readonly reason?: string;
+  constructor(message: string, kind: 'truncated' | 'blocked' | 'parse', reason?: string) {
     super(message);
     this.name = 'IncidentAnalysisError';
     this.kind = kind;
+    this.reason = reason;
   }
 }
 
@@ -433,8 +436,11 @@ export async function analyzeIncident(
       `[factnote-analyze] blocked: ${lastReason || 'unknown'}${lastDiagnostics ? ` (${lastDiagnostics})` : ''}`,
     );
     throw new IncidentAnalysisError(
-      '内容が安全フィルタによりブロックされ、分析結果を生成できませんでした。表現を少し和らげるか、固有名詞・詳細な描写を控えて再度お試しください。',
+      lastReason === 'PROHIBITED_CONTENT'
+        ? 'この記録は、Google側で常に有効な制限（利用者の設定では解除できません）により分析できませんでした。内容によっては誤って当たることがあります。記録の表現を少し和らげるか、固有名詞・詳細な描写を控えて、本文を直してから再度お試しください。'
+        : '内容が安全フィルタによりブロックされ、分析結果を生成できませんでした。表現を少し和らげるか、固有名詞・詳細な描写を控えて再度お試しください。',
       'blocked',
+      lastReason || undefined,
     );
   }
   throw new IncidentAnalysisError('モデル出力を JSON として解釈できませんでした', 'parse');

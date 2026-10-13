@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { buildMockAnalysis, buildMockOverallReviewPayload } from './fixtures';
-import { applyAnalysisResult, createEmptyRecord, describeSourceType } from './newRecord';
+import { applyAnalysisResult, createEmptyRecord, describeSourceType, isAnalysisBlocked, textHash } from './newRecord';
 import {
   analysisStatus,
+  blockedRecords,
   buildOverviewDigest,
   buildOverviewStats,
   estimateReanalysisMinutes,
@@ -275,5 +276,37 @@ describe('再分析時の記録への反映', () => {
     expect(describeSourceType({ sourceType: 'voice_recording', transcript: 'A: …' })).toContain('録音の文字起こし');
     expect(describeSourceType({ sourceType: 'text' })).toContain('記録者の記憶');
     expect(describeSourceType({ sourceType: 'voice_recording' })).toContain('記録者が書いた文章');
+  });
+});
+
+describe('AI側の制限で分析できない記録', () => {
+  const blockedAt = (r: IncidentRecord): IncidentRecord => ({
+    ...r,
+    analysisBlocked: { reason: '制限', textHash: textHash(r.rawText ?? ''), at: NOW.toISOString() },
+  });
+
+  it('本文が同じ間は再分析の対象から外し、本文を直すと自動で対象に戻る', () => {
+    const r = blockedAt(rec(3, { id: 'b', analysis: legacy() }));
+    expect(isAnalysisBlocked(r)).toBe(true);
+    expect(reanalysisTargets([r], 'outdated')).toHaveLength(0);
+    expect(reanalysisTargets([r], 'all')).toHaveLength(0);
+    expect(blockedRecords([r]).map((x) => x.id)).toEqual(['b']);
+
+    const edited = { ...r, rawText: '本文を直した' };
+    expect(isAnalysisBlocked(edited)).toBe(false);
+    expect(reanalysisTargets([edited], 'outdated').map((x) => x.id)).toEqual(['b']);
+    expect(blockedRecords([edited])).toHaveLength(0);
+  });
+
+  it('分析に成功すると印は消える', () => {
+    const r = blockedAt(rec(1));
+    const next = applyAnalysisResult(r, {
+      analysis: v3('user_more'),
+      title: 't',
+      isConflict: true,
+      isPositiveEvent: false,
+      isRepairAction: false,
+    });
+    expect(next.analysisBlocked).toBeUndefined();
   });
 });

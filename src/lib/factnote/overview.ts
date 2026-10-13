@@ -1,5 +1,5 @@
 import { aggregatePatterns, detectDataBias, patternActor, summaryFingerprint } from './aggregate';
-import { sourceTextOf } from './newRecord';
+import { isAnalysisBlocked, sourceTextOf } from './newRecord';
 import { INCIDENT_ANALYSIS_PROMPT_VERSION } from './prompts/incidentAnalysis';
 import {
   SEVERITY_LABELS,
@@ -32,11 +32,19 @@ export function analysisStatus(record: IncidentRecord): AnalysisStatus {
 
 export type ReanalysisMode = 'outdated' | 'all';
 
-/** 再分析できる記録か（分析対象の本文があり、処理中でない）。 */
+/** 再分析できる記録か（分析対象の本文があり、処理中でなく、AI側の制限で止まった本文のままではない）。 */
 export function canAnalyze(record: IncidentRecord): boolean {
   return (
-    sourceTextOf(record).length > 0 && record.status !== 'transcribing' && record.status !== 'analyzing'
+    sourceTextOf(record).length > 0 &&
+    record.status !== 'transcribing' &&
+    record.status !== 'analyzing' &&
+    !isAnalysisBlocked(record)
   );
+}
+
+/** AI側の制限で分析できず、本文を直すまで再分析の対象外の記録。 */
+export function blockedRecords(records: IncidentRecord[]): IncidentRecord[] {
+  return records.filter((r) => !r.excludeFromCarte && isAnalysisBlocked(r));
 }
 
 /**
