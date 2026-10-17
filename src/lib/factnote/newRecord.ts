@@ -141,7 +141,12 @@ export function createEmptyRecord(sourceType: RecordSource, now: Date = new Date
  * 記録の形式をAIへ伝える説明文。根拠の種類（記録で確認できるか、記録者の記憶か）の
  * 判断に使う。録音なら双方の発言が残っているが、文章なら相手の発言は記録者の記憶になる。
  */
-export function describeSourceType(record: Pick<IncidentRecord, 'sourceType' | 'correctedTranscript' | 'transcript'>): string {
+export function describeSourceType(
+  record: Pick<IncidentRecord, 'sourceType' | 'correctedTranscript' | 'transcript' | 'analysisText'>,
+): string {
+  if (record.analysisText?.trim()) {
+    return '記録者がAI分析用に書き直した文章（原本の要約・言い換え。相手の発言・意図は記録者の記憶に基づく）';
+  }
   switch (record.sourceType) {
     case 'voice_recording':
     case 'audio_file':
@@ -168,9 +173,18 @@ export function textHash(text: string): string {
   return `${text.length}_${hash.toString(16)}`;
 }
 
-/** AI側の制限で分析できなかった記録で、まだ本文が変わっていないか（変わっていれば再分析できる）。 */
+/** AI側の制限で分析できなかった記録で、まだAIへ送る本文が変わっていないか（変わっていれば再分析できる）。 */
 export function isAnalysisBlocked(record: IncidentRecord): boolean {
-  return !!record.analysisBlocked && record.analysisBlocked.textHash === textHash(sourceTextOf(record));
+  return !!record.analysisBlocked && record.analysisBlocked.textHash === textHash(analysisTextOf(record));
+}
+
+/**
+ * AIへ送る本文。分析用の本文（analysisText）があればそれ、なければ原本（sourceTextOf）。
+ * 分析・日記生成・フラットチェックなど、外部AIへ送る処理は必ずこちらを使う。
+ * 「原文のまま」日記・ローカル集計・書き出しは原本（sourceTextOf）を使う。
+ */
+export function analysisTextOf(record: IncidentRecord): string {
+  return record.analysisText?.trim() || sourceTextOf(record);
 }
 
 /** 分析対象のテキスト（修正済み文字起こし > 文字起こし > 原文の優先順）。 */

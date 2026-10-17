@@ -58,6 +58,7 @@ export default function FactnoteRecordEditPage() {
           emotions: updated.emotions,
           rawText: updated.rawText,
           correctedTranscript: updated.correctedTranscript,
+          analysisText: updated.analysisText,
           evidenceItems: updated.evidenceItems,
           updatedAt: new Date().toISOString(),
         });

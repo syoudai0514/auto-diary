@@ -14,9 +14,9 @@ import { getCachedTranscript, getRecord, listRecords, saveRecord, setCachedTrans
 import {
   applyAnalysisResult,
   describeSourceType,
+  analysisTextOf,
   isAnalysisBlocked,
   recordToContext,
-  sourceTextOf,
   textHash,
 } from './newRecord';
 import type { IncidentContext } from './prompts/incidentAnalysis';
@@ -263,7 +263,7 @@ async function runAnalyze(
 ): Promise<IncidentRecord | undefined> {
   try {
     const current = await getRecord(opts.recordId);
-    const sourceText = current ? sourceTextOf(current) : '';
+    const sourceText = current ? analysisTextOf(current) : '';
     if (!current || !sourceText) {
       await persistRecord(opts.recordId, (r) => ({ ...r, status: 'draft' }));
       throw new ApiError(400, 'empty_source', '分析する内容がありません。');
@@ -295,7 +295,7 @@ async function runAnalyze(
         ? {
             analysisBlocked: {
               reason: (err as ApiError).message,
-              textHash: textHash(sourceTextOf(r)),
+              textHash: textHash(analysisTextOf(r)),
               at: new Date().toISOString(),
             },
           }

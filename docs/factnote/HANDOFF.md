@@ -98,6 +98,9 @@
 
 - **AI側の制限で分析できない記録の扱い**（本番で62/63件成功、残り1件が `PROHIBITED_CONTENT` で毎回ブロック）: `PROHIBITED_CONTENT` は Google 側で常時有効な制限で、safetySettings では解除できない。**回避（別モデルで試す等）はしない**。代わりに `IncidentRecord.analysisBlocked`（理由 + 本文ハッシュ）を付け、本文が同じ間は再分析の対象から外す（本文を直すとハッシュが変わり自動で対象に戻る）。一括再分析ではブロックを失敗・連続失敗に数えず次へ進み、「AI側の制限で分析できない記録」として別枠に一覧表示。記録詳細にも説明と「編集で本文を直す」案内。分析ルートは `reason` を返し、PROHIBITED_CONTENT 専用の文言を出す
 
+- **分析用の本文（`IncidentRecord.analysisText`）**: 原本（rawText / transcript）は書き換えず、AIにはこちらだけを送る任意の本文。`newRecord.ts` の `analysisTextOf()`（分析用の本文 > 原本）を、外部AIへ送る処理（分析ジョブ・一括再分析・日記のAI生成・フラットチェック）で使う。「原文のまま」日記・ローカル集計・書き出しの原本表示は従来どおり `sourceTextOf()`。ブロック判定のハッシュも `analysisTextOf` で取るので、分析用の本文を書けばブロックされた記録も自動で再分析の対象に戻る。分析用の本文がある時は、記録の形式を「記録者がAI分析用に書き直した文章」としてAIに伝える。UI: 編集画面に「分析用の本文（任意）」（原本をコピーして書き始めるボタン・`#analysis-text` で直接スクロール）、記録詳細の分析タブに「分析用の本文で分析しています」表示、ブロック案内から「分析用の本文を書く」へ直行。Markdown書き出しにも別見出しで出力
+- テスト補助の修正: `bulkReanalysis.test.ts` の `waitForFinish` が、購読直後に届く前回実行の最終状態で解決してしまい、実行中の一括再分析を待たずに次へ進んでいた（「再実行で送り直さない」の確認が空振りしていた）。購読時の同期コールバックを無視するよう修正
+
 ## 検証コマンドと最新の実行結果
 
 ```
@@ -114,6 +117,7 @@ E2E_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e   # パス指定は
 - 一括再分析の503対策 完了時点: typecheck ✅ / test **410件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 - モデル切り替え 完了時点: typecheck ✅ / test **420件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 - ブロック記録の扱い 完了時点: typecheck ✅ / test **424件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
+- 分析用の本文 完了時点: typecheck ✅ / test **429件** ✅ / lint ✅ / build ✅ / test:e2e 全8フロー PASS ✅
 
 ## バグ修正: 分析が「分析に失敗しました」で毎回失敗する（安全フィルタの誤ブロック）
 

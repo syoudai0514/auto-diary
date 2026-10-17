@@ -50,15 +50,22 @@ function result(leaning: 'user_more' | 'other_more') {
   };
 }
 
-/** 一括再分析が終わる（running 以外になる）まで待つ。 */
+/**
+ * これから始める一括再分析が終わる（running 以外になる）まで待つ。
+ * 購読した瞬間に届く「前回の実行の最終状態」は無視する（それで解決すると、
+ * まだ動いている実行を待たずに次へ進んでしまう）。
+ */
 function waitForFinish(): Promise<NonNullable<BulkState>> {
   return new Promise((resolve) => {
+    let armed = false;
     const unsub = subscribeBulkReanalysis((s) => {
+      if (!armed) return;
       if (s && s.status !== 'running' && s.finishedAt) {
         queueMicrotask(() => unsub());
         resolve(s);
       }
     });
+    armed = true;
   });
 }
 
@@ -220,7 +227,23 @@ describe('一括再分析', () => {
     analyzeMock.mockClear();
     const again = waitForFinish();
     startBulkReanalysis({ recordIds: ['a'] });
-    await again;
+    const againState = await again;
+    expect(againState.done).toBe(1);
     expect(analyzeMock).not.toHaveBeenCalled();
+  });
+
+  it('分析用の本文がある記録は、原本ではなくそちらをAIへ送る', async () => {
+    await saveRecord(rec('a', { rawText: '原本の詳しい描写', analysisText: '言い換えた要約' }));
+    analyzeMock.mockResolvedValue(result('other_more'));
+
+    const done = waitForFinish();
+    startBulkReanalysis({ recordIds: ['a'] });
+    await done;
+
+    expect(analyzeMock.mock.calls[0][0]).toBe('言い換えた要約');
+    expect(analyzeMock.mock.calls[0][1].sourceType).toContain('AI分析用に書き直した');
+    const a = await getRecord('a');
+    expect(a?.rawText).toBe('原本の詳しい描写');
+    expect(a?.analysis?.verdict?.leaning).toBe('other_more');
   });
 });

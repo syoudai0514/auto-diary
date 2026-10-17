@@ -249,10 +249,28 @@ export async function run({ base, invite, newPage, imageFile }) {
   await page.click('a:has-text("編集")');
   await page.waitForSelector('text=記録を編集', { timeout: 5000 });
   await page.fill('input[aria-label="タイトル"]', '荷物の受け取り（あとで修正）');
+  // 分析用の本文: 原本をコピーして書き換える（原本はそのまま）
+  await page.click('button:has-text("原本をコピーして、分析用の本文を書く")');
+  const copied = await page.inputValue('textarea[aria-label="分析用の本文"]');
+  if (!copied.includes('荷物の受け取りを忘れた')) throw new Error('FAIL: analysis text not prefilled from original');
+  await page.fill('textarea[aria-label="分析用の本文"]', '分析用に言い換えた本文です。');
   await page.click('button:has-text("変更を保存")');
   await page.waitForURL('**/factnote/records/*', { timeout: 10000 });
   await page.waitForSelector('text=荷物の受け取り（あとで修正）', { timeout: 5000 });
   console.log('  OK: record date/title/content editable after save');
+
+  // 分析タブ: 分析用の本文で分析していることが分かり、やり直しではそちらだけを送る
+  await page.click('[role="tab"]:has-text("分析")');
+  await page.waitForSelector('text=「分析用の本文」で分析しています', { timeout: 5000 });
+  analyzeBody = null;
+  await page.click('button:has-text("内容を直したので分析をやり直す")');
+  for (let i = 0; i < 50 && !analyzeBody; i++) await page.waitForTimeout(100);
+  if (analyzeBody?.sourceText !== '分析用に言い換えた本文です。') {
+    throw new Error(`FAIL: reanalysis did not use analysis text: ${analyzeBody?.sourceText}`);
+  }
+  await page.click('[role="tab"]:has-text("原本")');
+  await page.waitForSelector('text=「いつもそう」と言われて苦しかった', { timeout: 5000 });
+  console.log('  OK: analysis text is sent to AI while the original stays intact');
 
   // --- 一覧に反映 ---
   await page.goto(`${base}/factnote/records`);

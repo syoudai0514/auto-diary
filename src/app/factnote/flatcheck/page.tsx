@@ -30,7 +30,7 @@ import {
 import { pastStatsText } from '@/lib/factnote/flatCheck';
 import { analysisSummaryForDiary } from '@/lib/factnote/generateFactnoteDiary';
 import { matchMemos } from '@/lib/factnote/memoMatch';
-import { sourceTextOf } from '@/lib/factnote/newRecord';
+import { analysisTextOf, sourceTextOf } from '@/lib/factnote/newRecord';
 import type {
   FlatCheckResult,
   FlatCheckScope,
@@ -153,7 +153,7 @@ function FlatCheckFlow() {
     try {
       const check = await withRetryOnBusy(() =>
         factnoteFlatCheckApi({
-          sourceText: sourceTextOf(record),
+          sourceText: analysisTextOf(record),
           analysisSummary: record.analysis ? analysisSummaryForDiary(record.analysis) : undefined,
           pastStats: pastStatsText(pastComparison, past.length),
           biasWarnings,
