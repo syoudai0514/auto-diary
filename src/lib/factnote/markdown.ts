@@ -183,6 +183,10 @@ export function recordToMarkdown(record: IncidentRecord): string {
     else lines.push('（本文なし）', '');
   }
 
+  if (record.analysisText?.trim()) {
+    lines.push('### 分析用の本文（ユーザーが書いた、AIへ送った文章）', '', record.analysisText.trim(), '');
+  }
+
   // 分析
   if (record.analysis) {
     lines.push('## 分析', '');

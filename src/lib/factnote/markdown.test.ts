@@ -53,6 +53,13 @@ describe('Markdown 書き出し', () => {
     expect(md).toContain('事実記録');
   });
 
+  it('分析用の本文があれば、原本とは別の見出しで書き出す', () => {
+    const md = recordToMarkdown({ ...fullRecord(), analysisText: 'AIへ送った言い換え' });
+    expect(md).toContain('### 分析用の本文');
+    expect(md).toContain('AIへ送った言い換え');
+    expect(md).toContain('頼まれていた荷物の受け取りを忘れた');
+  });
+
   it('分析・日記がない記録でも壊れない', () => {
     const r = { ...createEmptyRecord('text'), title: 'メモ', rawText: '短いメモ' };
     const md = recordToMarkdown(r);

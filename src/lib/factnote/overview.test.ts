@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { buildMockAnalysis, buildMockOverallReviewPayload } from './fixtures';
-import { applyAnalysisResult, createEmptyRecord, describeSourceType, isAnalysisBlocked, textHash } from './newRecord';
+import {
+  analysisTextOf,
+  applyAnalysisResult,
+  createEmptyRecord,
+  describeSourceType,
+  isAnalysisBlocked,
+  sourceTextOf,
+  textHash,
+} from './newRecord';
 import {
   analysisStatus,
   blockedRecords,
@@ -308,5 +316,31 @@ describe('AI側の制限で分析できない記録', () => {
       isRepairAction: false,
     });
     expect(next.analysisBlocked).toBeUndefined();
+  });
+});
+
+describe('分析用の本文（原本は残し、AIにはこちらだけ送る）', () => {
+  it('分析用の本文があればAIへ送る本文はそちら、原本はそのまま', () => {
+    const r = rec(1, { rawText: '原本の詳しい描写', analysisText: '言い換えた要約' });
+    expect(analysisTextOf(r)).toBe('言い換えた要約');
+    expect(sourceTextOf(r)).toBe('原本の詳しい描写');
+    // 空白だけなら原本で分析する
+    expect(analysisTextOf({ ...r, analysisText: '  ' })).toBe('原本の詳しい描写');
+  });
+
+  it('記録の形式は「記録者がAI分析用に書き直した文章」としてAIへ伝える', () => {
+    expect(describeSourceType({ sourceType: 'text', analysisText: '要約' })).toContain('AI分析用に書き直した');
+  });
+
+  it('ブロックされた記録に分析用の本文を書くと、原本を変えずに再分析の対象へ戻る', () => {
+    const blocked: IncidentRecord = {
+      ...rec(2, { id: 'x', rawText: '原本' }),
+      analysisBlocked: { reason: '制限', textHash: textHash('原本'), at: NOW.toISOString() },
+    };
+    expect(isAnalysisBlocked(blocked)).toBe(true);
+    const withAnalysisText = { ...blocked, analysisText: '言い換え' };
+    expect(isAnalysisBlocked(withAnalysisText)).toBe(false);
+    expect(reanalysisTargets([withAnalysisText], 'outdated').map((r) => r.id)).toEqual(['x']);
+    expect(withAnalysisText.rawText).toBe('原本');
   });
 });

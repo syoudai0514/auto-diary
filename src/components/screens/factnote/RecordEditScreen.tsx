@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AutoTextarea } from '@/components/screens/common';
 import {
   CHILDREN_OPTIONS,
@@ -59,6 +59,16 @@ export function FactnoteRecordEditScreen({
   const editsRawText = record.sourceType === 'text' || record.sourceType === 'quick_memo';
   const [rawText, setRawText] = useState(record.rawText ?? '');
   const [transcript, setTranscript] = useState(record.correctedTranscript ?? record.transcript ?? '');
+  // 分析用の本文（任意）。原本は書き換えず、AIにはこちらだけを送る
+  const [analysisText, setAnalysisText] = useState(record.analysisText ?? '');
+  const analysisSectionRef = useRef<HTMLElement>(null);
+
+  // 「分析できなかった記録」の案内から来た時（#analysis-text）は、その欄までスクロールする
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#analysis-text') {
+      analysisSectionRef.current?.scrollIntoView({ block: 'start' });
+    }
+  }, []);
 
   function save() {
     const stored = childrenToStored(children);
@@ -74,6 +84,7 @@ export function FactnoteRecordEditScreen({
       childrenPresent: stored.childrenPresent,
       childImpactTags: stored.childImpactTags,
       emotions,
+      analysisText: analysisText.trim() ? analysisText : undefined,
       updatedAt: new Date().toISOString(),
     };
 
@@ -160,6 +171,36 @@ export function FactnoteRecordEditScreen({
             </>
           )}
         </Section>
+
+        <section id="analysis-text" ref={analysisSectionRef} className="mt-7 scroll-mt-4">
+          <h2 className="mb-1 text-[13px] font-semibold text-text-secondary">分析用の本文（任意）</h2>
+          <p className="mb-2 text-[12px] leading-relaxed text-text-tertiary">
+            ここに書くと、AIにはこちらだけを送って分析します。上の「内容」（原本）は書き換えずにそのまま残ります。AI側の制限に当たる描写や、子どもの体のことなど外部に送りたくない情報を省く時に使ってください。空なら原本で分析します。
+          </p>
+          {analysisText ? (
+            <>
+              <AutoTextarea
+                value={analysisText}
+                onChange={setAnalysisText}
+                ariaLabel="分析用の本文"
+                className="min-h-[30dvh] w-full resize-none rounded-card border border-accent bg-surface px-4 py-3 text-[15px] leading-[1.85] focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <button
+                onClick={() => setAnalysisText('')}
+                className="mt-1 min-h-[44px] text-[13px] text-text-secondary active:opacity-60"
+              >
+                分析用の本文を消す（原本で分析する）
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setAnalysisText(editsRawText ? rawText : transcript)}
+              className="flex min-h-[48px] w-full items-center justify-center rounded-card border border-dashed border-border px-4 text-[14px] font-semibold text-accent active:opacity-70"
+            >
+              原本をコピーして、分析用の本文を書く
+            </button>
+          )}
+        </section>
 
         <Section title="場所">
           <ChipGroup

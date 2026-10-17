@@ -17,7 +17,7 @@ import { ApiError } from '@/lib/api';
 import { factnoteDiaryApi } from '@/lib/factnote/api';
 import { getAttachmentBlob, newFactnoteId } from '@/lib/factnote/db';
 import { analysisSummaryForDiary } from '@/lib/factnote/generateFactnoteDiary';
-import { isAnalysisBlocked, sourceTextOf } from '@/lib/factnote/newRecord';
+import { analysisTextOf, isAnalysisBlocked, sourceTextOf } from '@/lib/factnote/newRecord';
 import { loadFactnoteProfile, profileToPeopleContext } from '@/lib/factnote/profile';
 import { FACTNOTE_DIARY_PROMPT_VERSION } from '@/lib/factnote/prompts/diary';
 import {
@@ -340,6 +340,7 @@ function AnalysisTab({
     return (
       <>
         {isAnalysisBlocked(record) && <BlockedNotice record={record} className="mt-5" />}
+        <AnalysisTextBadge record={record} />
         <AnalysisView
           analysis={record.analysis}
           previousAnalysis={record.previousAnalysis}
@@ -390,9 +391,28 @@ function BlockedNotice({ record, className = '' }: { record: IncidentRecord; cla
       <p className="text-[13.5px] font-semibold text-warning">この記録は最新の基準で分析できませんでした</p>
       <p className="mt-1.5 text-[12.5px] leading-[1.75] text-text">{record.analysisBlocked?.reason}</p>
       <p className="mt-1.5 text-[12px] leading-relaxed text-text-secondary">
-        右上の「編集」で本文を直すと、もう一度分析できます。
+        日記（原本）はそのままにして、AIに送る文章だけを書き直せます。
       </p>
+      <Link
+        href={`/factnote/records/${record.id}/edit#analysis-text`}
+        className="mt-2.5 flex h-11 items-center justify-center rounded-full bg-accent px-5 text-[14px] font-semibold text-accent-on active:opacity-80"
+      >
+        分析用の本文を書く
+      </Link>
     </div>
+  );
+}
+
+/** 分析用の本文で分析している記録であることの表示。 */
+function AnalysisTextBadge({ record }: { record: IncidentRecord }) {
+  if (!record.analysisText?.trim()) return null;
+  return (
+    <p className="mt-4 rounded-chip bg-surface px-3 py-2 text-[12px] leading-relaxed text-text-secondary">
+      この記録は「分析用の本文」で分析しています（日記の原本はそのまま）。
+      <Link href={`/factnote/records/${record.id}/edit#analysis-text`} className="ml-1 text-accent underline">
+        分析用の本文を見る
+      </Link>
+    </p>
   );
 }
 
@@ -457,7 +477,8 @@ function DiaryTab({
       const diary = await withRetryOnBusy(() =>
         factnoteDiaryApi(
           mode,
-          source,
+          // AIへ送るのは分析用の本文（あれば）。「原文のまま」は上の分岐で原本を使う
+          analysisTextOf(record),
           record.analysis ? analysisSummaryForDiary(record.analysis) : undefined,
           peopleCtx.current,
         ),

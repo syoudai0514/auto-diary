@@ -35,6 +35,11 @@ export interface IncidentRecord {
   transcript?: string;
   /** ユーザーが修正した文字起こし。 */
   correctedTranscript?: string;
+  /**
+   * 分析用の本文（任意）。あればAIにはこちらだけを送り、原本（rawText / transcript）は
+   * 書き換えずに残す。AI側の制限に当たる描写や、外部に送りたくない情報を省くために使う。
+   */
+  analysisText?: string;
 
   location?: string;
   people: PersonRef[];
@@ -54,8 +59,8 @@ export interface IncidentRecord {
   /** 再分析で置き換えられた直前の分析（判定の変化を比較するため1世代だけ保持）。 */
   previousAnalysis?: IncidentAnalysis;
   /**
-   * AI側の制限（安全フィルタ等）で分析できなかった記録の印。本文（sourceTextOf）を
-   * 直すと textHash が変わり、自動的に再分析の対象へ戻る。一括再分析で同じ記録を
+   * AI側の制限（安全フィルタ等）で分析できなかった記録の印。AIへ送る本文（analysisTextOf）を
+   * 直す（分析用の本文を書く）と textHash が変わり、自動的に再分析の対象へ戻る。一括再分析で同じ記録を
    * 何度も送り続けないためのもの。
    */
   analysisBlocked?: { reason: string; textHash: string; at: string };

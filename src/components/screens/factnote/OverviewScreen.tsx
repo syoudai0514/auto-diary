@@ -94,7 +94,7 @@ export function ReanalysisCard({
             AI側の制限で分析できない記録 {blocked.length}件
           </summary>
           <p className="mt-1 text-[12px] leading-relaxed text-text">
-            Google側の制限（安全フィルタ等）で分析を受け付けてもらえなかった記録です。同じ内容を何度も送らないよう、再分析の対象から外しています。記録の本文を直すと、自動で再分析の対象に戻ります。
+            Google側の制限（安全フィルタ等）で分析を受け付けてもらえなかった記録です。同じ内容を何度も送らないよう、再分析の対象から外しています。記録を開いて「分析用の本文を書く」から、AIに送る文章だけを書き直すと（日記の原本はそのまま）、自動で再分析の対象に戻ります。
           </p>
           <ul className="mt-1 divide-y divide-border">
             {blocked.slice(0, 10).map((r) => (
