@@ -95,19 +95,21 @@ describe('全体の集計', () => {
       rec(3, { analysis: v3('user_more'), isConflict: true }),
       rec(4, { analysis: legacy(), isConflict: true }),
       rec(5, { analysis: v3('not_applicable'), isPositiveEvent: true }),
+      rec(6, { analysis: v3('mixed_independent'), isConflict: true }),
     ];
     const stats = buildOverviewStats(records, NOW);
-    expect(stats.analyzedCurrent).toBe(4);
+    expect(stats.analyzedCurrent).toBe(5);
     expect(stats.analyzedOutdated).toBe(1);
     expect(stats.leaningCounts.other_mainly).toBe(1);
     expect(stats.leaningCounts.other_more).toBe(1);
     expect(stats.leaningCounts.user_more).toBe(1);
     expect(stats.leaningCounts.not_applicable).toBe(1);
+    expect(stats.leaningCounts.mixed_independent).toBe(1);
     expect(stats.judgedConflicts).toBe(3);
-    // モック分析は 自分側=中程度1 / 相手側=軽微1。最新基準4件ぶんだけ数える
-    expect(stats.severity.user.moderate).toBe(4);
-    expect(stats.severity.other.minor).toBe(4);
-    expect(stats.conflicts).toBe(4);
+    // モック分析は 自分側=中程度1 / 相手側=軽微1。最新基準5件ぶんだけ数える
+    expect(stats.severity.user.moderate).toBe(5);
+    expect(stats.severity.other.minor).toBe(5);
+    expect(stats.conflicts).toBe(5);
     expect(stats.positives).toBe(1);
   });
 

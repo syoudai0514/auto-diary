@@ -1,0 +1,33 @@
+name: FactNote verdict regression
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/factnote/**'
+      - 'docs/factnote/**'
+      - 'docs/FACTNOTE_REQUEST.md'
+      - '.github/workflows/factnote-verdict.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factnote-verdict-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build

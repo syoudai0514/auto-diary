@@ -257,7 +257,7 @@ export function buildOverviewDigest(
     `# 全体の集計（ローカル集計。カルテ除外の記録を除く）`,
     `記録 ${stats.total}件（最新基準で分析済み ${stats.analyzedCurrent} / 旧基準の分析 ${stats.analyzedOutdated} / 未分析 ${stats.unanalyzed}）`,
     `衝突 ${stats.conflicts}件 / 良い出来事 ${stats.positives}件 / 修復行動 ${stats.repairs}件 / 子ども同席の衝突 ${stats.childPresentConflicts}件 / 安全上の懸念がある記録 ${stats.safetyRecords}件`,
-    `最新基準での判定内訳（衝突 ${stats.judgedConflicts}件）: ${LEANING_SCALE.map((l) => `${VERDICT_LEANING_LABELS[l]} ${stats.leaningCounts[l]}`).join(' / ')} / どちらにも大きな問題なし ${stats.leaningCounts.no_fault} / 判断材料不足 ${stats.leaningCounts.undeterminable}`,
+    `最新基準での判定内訳（衝突 ${stats.judgedConflicts}件）: ${LEANING_SCALE.map((l) => `${VERDICT_LEANING_LABELS[l]} ${stats.leaningCounts[l]}`).join(' / ')} / どちらにも大きな問題なし ${stats.leaningCounts.no_fault} / 判断材料不足 ${stats.leaningCounts.undeterminable} / 別件のため一律判定なし ${stats.leaningCounts.mixed_independent}`,
     `自分側の問題の重さ: 重大 ${stats.severity.user.serious} / 中程度 ${stats.severity.user.moderate} / 軽微 ${stats.severity.user.minor}`,
     `相手側の問題の重さ: 重大 ${stats.severity.other.serious} / 中程度 ${stats.severity.other.moderate} / 軽微 ${stats.severity.other.minor}`,
     ...(stats.biasWarnings.length > 0 ? [`記録の偏り: ${stats.biasWarnings.join(' / ')}`] : []),

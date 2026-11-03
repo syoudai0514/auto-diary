@@ -37,6 +37,7 @@ const WireIssueSchema = WireItemSchema.extend({
 export const VerdictSchema = z.object({
   reasoning: z.string(),
   roleReversalCheck: z.string(),
+  scope: z.enum(['single_incident', 'connected_sequence', 'independent_incidents']).default('single_incident'),
   leaning: z.enum([
     'user_mainly',
     'user_more',
@@ -46,6 +47,7 @@ export const VerdictSchema = z.object({
     'no_fault',
     'not_applicable',
     'undeterminable',
+    'mixed_independent',
   ]),
   robustness: z.enum(['firm', 'tentative', 'fragile']).catch('tentative'),
   whatWouldChange: z.string(),
@@ -253,12 +255,13 @@ export const INCIDENT_RESPONSE_SCHEMA = {
       type: Type.OBJECT,
       description: '論点の重さから導く全体の判定',
       properties: {
-        reasoning: { type: Type.STRING, description: '件数ではなく重さの比較による理由' },
+        scope: { type: Type.STRING, description: '"single_incident"（単一場面）/ "connected_sequence"（同一の因果連続）/ "independent_incidents"（独立した複数場面）' },
+        reasoning: { type: Type.STRING, description: '件数ではなく重さの比較による理由。独立した複数場面は相殺しない' },
         roleReversalCheck: { type: Type.STRING, description: '立場を入れ替えても同じ判定になるかの確認結果' },
         leaning: {
           type: Type.STRING,
           description:
-            '"user_mainly" / "user_more" / "comparable" / "other_more" / "other_mainly" / "no_fault" / "not_applicable" / "undeterminable" のいずれか',
+            '"user_mainly" / "user_more" / "comparable" / "other_more" / "other_mainly" / "no_fault" / "not_applicable" / "undeterminable" / "mixed_independent" のいずれか',
         },
         robustness: {
           type: Type.STRING,
@@ -267,8 +270,8 @@ export const INCIDENT_RESPONSE_SCHEMA = {
         whatWouldChange: { type: Type.STRING, description: 'どんな事実が分かれば判定が変わりうるか' },
         headline: { type: Type.STRING, description: '判定を1文で率直に言い切る' },
       },
-      required: ['reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
-      propertyOrdering: ['reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
+      required: ['scope', 'reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
+      propertyOrdering: ['scope', 'reasoning', 'roleReversalCheck', 'leaning', 'robustness', 'whatWouldChange', 'headline'],
     },
     conciseView: { type: Type.STRING, description: '判定と矛盾しない2〜4文の率直な見解。1文目で判定を言い切る' },
     balancedConclusion: { type: Type.STRING, description: '論点ごとの結論。片寄っているなら片寄っていると明記する' },
@@ -486,23 +489,40 @@ export function toIncidentAnalysisResult(
       suggestion: it.suggestion.trim() || undefined,
     }));
 
+  // v5: 独立した別件についてAIが「双方同程度」などの一律比較を返しても採用しない。
+  // 個別の論点の評価は保持し、総合ラベルと要約だけを安全側に正規化する。
+  const independent = payload.verdict.scope === 'independent_incidents';
+  const perTopicConclusion = payload.responsibilityBreakdown.map((row) =>
+    `${row.topic}：${[
+      row.userSide ? `自分側 ${row.userSide}` : '',
+      row.otherSide ? `相手側 ${row.otherSide}` : '',
+    ].filter(Boolean).join('／') || '個別に判断する'}`,
+  ).join('。');
+
   const analysis: IncidentAnalysis = {
     verdict: {
-      leaning: payload.verdict.leaning,
-      headline: payload.verdict.headline,
-      reasoning: payload.verdict.reasoning,
+      scope: payload.verdict.scope,
+      leaning: independent ? 'mixed_independent' : payload.verdict.leaning,
+      headline: independent ? '別々の出来事を一つの責任判定にはしません' : payload.verdict.headline,
+      reasoning: independent
+        ? '時間帯や発端が異なる問題は、別の出来事として評価します。片方の問題を別件の問題で相殺せず、論点ごとの整理を確認してください。'
+        : payload.verdict.reasoning,
       robustness: payload.verdict.robustness,
       whatWouldChange: payload.verdict.whatWouldChange,
-      roleReversalCheck: payload.verdict.roleReversalCheck,
+      roleReversalCheck: independent
+        ? '一括判定は行いません。それぞれの場面で行為者を入れ替えても同じ基準を適用します。'
+        : payload.verdict.roleReversalCheck,
     },
-    conciseView: payload.conciseView,
+    conciseView: independent
+      ? '独立した複数の出来事が含まれるため、日記全体を一つの責任判定にはしません。場面ごとの行動と対応は、論点ごとの整理で別々に確認してください。'
+      : payload.conciseView,
     verifiedFacts: items(payload.verifiedFacts),
     userClaims: items(payload.userClaims),
     aiInferences: items(payload.aiInferences),
     unknowns: items(payload.unknowns),
     userImprovementPoints: issues(payload.userImprovementPoints),
     otherPartyProblemPoints: issues(payload.otherPartyProblemPoints),
-    balancedConclusion: payload.balancedConclusion,
+    balancedConclusion: independent && perTopicConclusion ? perTopicConclusion : payload.balancedConclusion,
     nextActions: payload.nextActions.slice(0, 3),
     replySuggestions: {
       gentle: payload.replySuggestions.gentle.trim(),

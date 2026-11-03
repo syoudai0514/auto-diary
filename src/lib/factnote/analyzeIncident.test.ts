@@ -11,7 +11,26 @@ import {
 import { safeParseJson } from './jsonExtract';
 import { analysisSummaryForDiary } from './generateFactnoteDiary';
 import { buildMockAnalysis } from './fixtures';
-import { INCIDENT_ANALYSIS_PROMPT_VERSION } from './prompts/incidentAnalysis';
+import { buildIncidentAnalysisSystemPrompt, INCIDENT_ANALYSIS_PROMPT_VERSION } from './prompts/incidentAnalysis';
+
+describe('判定v5の不変条件', () => {
+  it('独立した複数場面を合算しない指示を含む', () => {
+    const prompt = buildIncidentAnalysisSystemPrompt();
+    expect(prompt).toContain('independent_incidents');
+    expect(prompt).toContain('mixed_independent');
+    expect(prompt).toContain('別件の問題を合算して comparable にすること');
+  });
+
+  it('謝罪を求める行為と不適切な要求方法を区別する', () => {
+    const prompt = buildIncidentAnalysisSystemPrompt();
+    expect(prompt).toContain('謝罪・訂正を求めること自体');
+    expect(prompt).toContain('暴言・脅し・強要');
+  });
+
+  it('子どもが同席した場面をすべての場面へ拡張しない', () => {
+    expect(buildIncidentAnalysisSystemPrompt()).toContain('すべての場面へ転用しない');
+  });
+});
 
 function makePayload(): IncidentAnalysisPayload {
   return {
@@ -67,6 +86,7 @@ function makePayload(): IncidentAnalysisPayload {
       reasoning: '発端の受け取り忘れ（中程度）が、反応の一般化（軽微）より重い。',
       roleReversalCheck: '入れ替えても同じ判定。',
       leaning: 'user_more',
+      scope: 'single_incident',
       robustness: 'firm',
       whatWouldChange: '忘れ事が繰り返されていた場合。',
       headline: '今回は自分側の問題が主です。',
@@ -106,6 +126,43 @@ describe('分析ペイロードの検証と組み立て', () => {
     expect(result.analysis.responsibilityBreakdown[0].userSide).toBe('改善が必要');
     expect(result.title).toBe('荷物の受け取りを忘れた');
     expect(result.isConflict).toBe(true);
+  });
+
+  it('独立した二つの衝突は一律の「双方同程度」を上書きし、場面別の問題を保持する', () => {
+    const payload = makePayload();
+    payload.verdict.scope = 'independent_incidents';
+    payload.verdict.leaning = 'comparable'; // AIが誤って全体を同程度と返したケース
+    payload.verdict.headline = '双方同程度';
+    payload.conciseView = '双方同程度の責任。';
+    payload.balancedConclusion = '全体として双方同程度。';
+    payload.responsibilityBreakdown = [
+      { topic: '午前の連絡', userSide: '強い口調で事実確認を求めた', otherSide: '', judgment: 'user_improvement', severity: 'moderate', basis: 'user_claim' },
+      { topic: '夜の家事分担', userSide: '分担の事情を尋ねた', otherSide: '依頼に応じず一方的に担当を変更した', judgment: 'other_improvement', severity: 'moderate', basis: 'user_claim' },
+    ];
+    const { analysis } = toIncidentAnalysisResult(payload, { aiModel: 'm' });
+    expect(analysis.verdict?.scope).toBe('independent_incidents');
+    expect(analysis.verdict?.leaning).toBe('mixed_independent');
+    expect(analysis.conciseView).not.toContain('双方同程度');
+    expect(analysis.balancedConclusion).not.toContain('双方同程度');
+    expect(analysis.responsibilityBreakdown).toHaveLength(2);
+    expect(analysis.responsibilityBreakdown[0].judgment).toBe('user_improvement');
+    expect(analysis.responsibilityBreakdown[1].judgment).toBe('other_improvement');
+  });
+
+  it('直接つながった同一の衝突の判定は勝手に変更しない', () => {
+    const payload = makePayload();
+    payload.verdict.scope = 'connected_sequence';
+    payload.verdict.leaning = 'other_more';
+    const { analysis } = toIncidentAnalysisResult(payload, { aiModel: 'm' });
+    expect(analysis.verdict?.leaning).toBe('other_more');
+    expect(analysis.conciseView).toBe(payload.conciseView);
+  });
+
+  it('旧モデルで scope がないペイロードは単一場面として読み込める', () => {
+    const p = makePayload() as unknown as { verdict: { scope?: string } };
+    delete p.verdict.scope;
+    const parsed = IncidentAnalysisPayloadSchema.parse(p);
+    expect(parsed.verdict.scope).toBe('single_incident');
   });
 
   it('判定・重さ・根拠の種類・パターンの主体を引き継ぐ', () => {
