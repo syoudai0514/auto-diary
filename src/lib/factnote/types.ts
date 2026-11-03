@@ -161,12 +161,15 @@ export type VerdictLeaning =
   | 'other_mainly'
   | 'no_fault'
   | 'not_applicable'
-  | 'undeterminable';
+  | 'undeterminable'
+  | 'mixed_independent';
 
 /** 判定の確かさ（未確認の主張にどれだけ依存しているか）。 */
 export type VerdictRobustness = 'firm' | 'tentative' | 'fragile';
 
 export interface IncidentVerdict {
+  /** v5以降: 単一/連続/独立した複数の衝突。旧分析は未設定。 */
+  scope?: 'single_incident' | 'connected_sequence' | 'independent_incidents';
   leaning: VerdictLeaning;
   /** 1文の率直な判定。 */
   headline: string;
@@ -309,6 +312,7 @@ export const VERDICT_LEANING_LABELS: Record<VerdictLeaning, string> = {
   no_fault: 'どちらにも大きな問題なし',
   not_applicable: '判定の対象外（衝突ではない）',
   undeterminable: '判断材料が不足',
+  mixed_independent: '別件のため一律判定しない',
 };
 
 /** 判定の確かさの表示名。 */

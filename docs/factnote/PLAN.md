@@ -184,3 +184,13 @@ DB名 `factnote` / version 1。`drafts.ts` の openDB/tx パターンを踏襲�
 - 破壊的マイグレーションなし（DB新設のみ)
 
 ただし iOS の IndexedDB 退避リスクがあるため、`navigator.storage.persist()` とバックアップ導線をP0から入れる（依頼書 §21/§26）。
+
+
+## 2026-11-03追補 — 判定v5：独立した出来事を合算しない
+- 一件の記録に直接つながらない複数の衝突が含まれる場合、日記全体に「双方同程度」等の単一責任判定を付けてはならない。
+- `verdict.scope` は `single_incident` / `connected_sequence` / `independent_incidents`。独立した複数場面には `mixed_independent`（別件のため一律判定しない）を使用する。
+- 各場面の `responsibilityBreakdown` は残し、場所や時間帯を論点名に明記。時間帯と原因の異なる二つの衝突を相殺しない。
+- 謝罪・訂正を求める行為自体は問題行動ではない。暴言・脅迫など要求方法に明示的な根拠がある場合だけ別途評価する。清掃の実施と謝罪の有無は別に評価する。
+- 記念日の準備や過去の反省メモは独立した場面の問題を相殺しない。記録者による申告は `user_claim` とし、相手の意図、不貞の有無は推定で確定しない。
+- モデルが `scope=independent_incidents` と返した場合、`toIncidentAnalysisResult` が誤った一括 `comparable` を補正し、項目別の根拠と評価を保持する。
+- 既存レコードは書き換えず、`INCIDENT_ANALYSIS_PROMPT_VERSION=v5` への再分析で新基準を適用する。第三者レビューと実モデル検証前の本番公開は保留。
