@@ -514,7 +514,7 @@ export function toIncidentAnalysisResult(
         : payload.verdict.roleReversalCheck,
     },
     conciseView: independent
-      ? '独立した複数の出来事が含まれるため、全体を「双方同程度」などの一つの判定にはしません。場面ごとの行動と対応は、論点ごとの整理で別々に確認してください。'
+      ? '独立した複数の出来事が含まれるため、日記全体を一つの責任判定にはしません。場面ごとの行動と対応は、論点ごとの整理で別々に確認してください。'
       : payload.conciseView,
     verifiedFacts: items(payload.verifiedFacts),
     userClaims: items(payload.userClaims),
